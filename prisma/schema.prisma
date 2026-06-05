@@ -77,12 +77,16 @@ model Address {
 }
 
 model ACUnit {
-  id        String   @id @default(uuid())
+  id        String @id
+
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  details   String   // e.g., "Split AC • 1.5 Ton"
+  user      User   @relation(fields: [userId], references: [id])
+
+  details   String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   complaints Complaint[] @relation("ACUnitComplaints")
 }
 

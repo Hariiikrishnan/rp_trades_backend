@@ -90,92 +90,173 @@ exports.createCustomer = async (req, res) => {
       email,
       phone,
       address,
-      acUnits
+      acUnits = [],
     } = req.body;
+     console.log(req.body);
 
-    const existingUser =
-      await prisma.user.findUnique({
-        where: { email }
-      });
-
-    if (existingUser) {
+    // Validation
+    if (!name || !email || !address) {
       return res.status(400).json({
-        message: 'Customer already exists'
+        success: false,
+        message: 'Name, email and address are required',
       });
+    }
+
+    const existingCustomer =
+      await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email },
+            ...(phone ? [{ phone }] : []),
+          ],
+        },
+      });
+
+    if (existingCustomer) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer already exists',
+      });
+    }
+
+    // Check duplicate serial numbers in request
+    const serialNumbers = acUnits.map(ac => ac.id);
+
+    const duplicates = serialNumbers.filter(
+      (item, index) =>
+        serialNumbers.indexOf(item) !== index
+    );
+
+    if (duplicates.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Duplicate AC serial numbers found in request',
+      });
+    }
+
+    // Check if serial numbers already exist
+    if (serialNumbers.length > 0) {
+      const existingACs =
+        await prisma.aCUnit.findMany({
+          where: {
+            id: {
+              in: serialNumbers,
+            },
+          },
+          select: {
+            id: true,
+          },
+        });
+       
+
+      if (existingACs.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'One or more AC serial numbers already exist',
+          existingSerialNumbers:
+            existingACs.map(ac => ac.id),
+        });
+      }
     }
 
     const setupToken =
       crypto.randomBytes(32).toString('hex');
 
-    const customer = await prisma.user.create({
-      data: {
-        name,
-        email,
-        phone,
-        role: 'CUSTOMER',
+    const customer =
+      await prisma.user.create({
+        data: {
+          name,
+          email,
+          phone,
 
-        passwordHash: bcrypt.hashSync('123456', 10),
-        isPasswordSet: false,
+          role: 'CUSTOMER',
 
-        setupToken,
+          passwordHash:
+            bcrypt.hashSync(`${email.split('@')[0]}123`, 10),
 
-        setupTokenExpiry: new Date(
-          Date.now() + 24 * 60 * 60 * 1000
-        ),
+          isPasswordSet: false,
 
-        addresses: {
-          create: [
-            {
-              type: 'HOME',
-              address,
-              isDefault: true
-            }
-          ]
+          setupToken,
+
+          setupTokenExpiry: new Date(
+            Date.now() + 24 * 60 * 60 * 1000
+          ),
+
+          addresses: {
+            create: [
+              {
+                type: 'HOME',
+                address,
+                isDefault: true,
+              },
+            ],
+          },
+
+          acUnits: {
+            create: acUnits.map(ac => ({
+              id: ac.id.trim(), // SERIAL NUMBER
+              details: ac.details.trim(),
+            })),
+          },
         },
 
-        acUnits: {
-          create: acUnits.map(unit => ({
-            details: unit.details
-          }))
-        }
-      },
+        include: {
+          addresses: true,
+          acUnits: true,
+        },
+      });
 
-      include: {
-        addresses: true,
-        acUnits: true
-      }
-    });
 
-    res.status(201).json({
+    return res.status(201).json({
+      success: true,
       message: 'Customer created successfully',
       setupToken,
-      customer
+      customer,
     });
 
   } catch (error) {
-    res.status(500).json({
+    console.error(
+      'CREATE CUSTOMER ERROR:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
       message: 'Error creating customer',
-      error: error.message
+      error: error.message,
     });
   }
 };
+
+
 
 exports.createTechnician = async (req, res) => {
   try {
     const {
       name,
       email,
-      phone
+      phone,
+      specialty,
+      experience,
+      isAvailable,
     } = req.body;
+
+    if (!name || !email || !phone) {
+      return res.status(400).json({
+        message: 'Name, email and phone are required',
+      });
+    }
 
     const existingUser =
       await prisma.user.findUnique({
-        where: { email }
+        where: { email },
       });
 
     if (existingUser) {
       return res.status(400).json({
-        message: 'Technician already exists'
+        message: 'Technician already exists',
       });
     }
 
@@ -188,29 +269,46 @@ exports.createTechnician = async (req, res) => {
           name,
           email,
           phone,
+
           role: 'TECHNICIAN',
 
-          passwordHash: bcrypt.hashSync('123456', 10),
+          specialty:
+            specialty ?? 'General Servicing',
+
+          experience:
+            parseInt(experience ?? 0),
+
+          isAvailable:
+            isAvailable ?? true,
+
+          passwordHash: bcrypt.hashSync(
+            `${email.split('@')[0]}123`,
+            10,
+          ),
+
           isPasswordSet: false,
 
           setupToken,
 
           setupTokenExpiry: new Date(
-            Date.now() + 24 * 60 * 60 * 1000
-          )
-        }
+            Date.now() + 24 * 60 * 60 * 1000,
+          ),
+        },
       });
 
     res.status(201).json({
+      success: true,
       message: 'Technician created successfully',
       setupToken,
-      technician
+      technician,
     });
-
   } catch (error) {
+    console.error(error);
+
     res.status(500).json({
+      success: false,
       message: 'Error creating technician',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -540,7 +638,6 @@ exports.globalSearch = async (req, res) => {
 
 exports.getAllServiceReports = async (req, res) => {
   try {
-    console.log("Hiii");
 
     const reports = await prisma.serviceReport.findMany({
       orderBy: { commissioningDate: 'desc' },
@@ -564,13 +661,9 @@ exports.getAllServiceReports = async (req, res) => {
       }
     });
 
-    console.log("Reports count:", reports.length);
 
     res.json(reports);
   } catch (error) {
-    console.error("SERVICE REPORT ERROR:");
-    console.error(error);
-    console.error(error.stack);
 
     res.status(500).json({
       message: 'Error fetching service reports',
@@ -672,40 +765,39 @@ exports.updateCustomer = async (req, res) => {
       }
     }
 
-    if (acUnits && Array.isArray(acUnits)) {
-      const incomingIds = acUnits.map(unit => unit.id).filter(id => id);
+  if (acUnits && Array.isArray(acUnits)) {
 
-      const existingAcs = await prisma.aCUnit.findMany({ where: { userId: id } });
-      const acsToDelete = existingAcs.filter(ac => !incomingIds.includes(ac.id));
+  const invalidAC = acUnits.find(
+    unit =>
+      !unit.id ||
+      !unit.id.trim() ||
+      !unit.details ||
+      !unit.details.trim()
+  );
 
-      for (const ac of acsToDelete) {
-        try {
-          await prisma.aCUnit.delete({ where: { id: ac.id } });
-        } catch (err) {
-          console.warn(`Could not delete AC unit ${ac.id}: ${err.message}`);
-        }
-      }
+  if (invalidAC) {
+    return res.status(400).json({
+      message:
+        'Each AC Unit must contain id (serial number) and details'
+    });
+  }
 
-      for (const unit of acUnits) {
-        if (unit.id) {
-          const exists = await prisma.aCUnit.findUnique({ where: { id: unit.id } });
-          if (exists) {
-            await prisma.aCUnit.update({
-              where: { id: unit.id },
-              data: { details: unit.details }
-            });
-          } else {
-            await prisma.aCUnit.create({
-              data: { userId: id, details: unit.details }
-            });
-          }
-        } else {
-          await prisma.aCUnit.create({
-            data: { userId: id, details: unit.details }
-          });
-        }
-      }
+  await prisma.aCUnit.deleteMany({
+    where: {
+      userId: id
     }
+  });
+
+  if (acUnits.length > 0) {
+    await prisma.aCUnit.createMany({
+      data: acUnits.map(unit => ({
+        id: unit.id.trim(),
+        userId: id,
+        details: unit.details.trim(),
+      }))
+    });
+  }
+}
 
     const finalUser = await prisma.user.findUnique({
       where: { id },
