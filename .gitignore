@@ -7,7 +7,7 @@ node_modules/
 !.env.example
 
 # Uploads (do not commit user files)
-uploads/
+
 
 # Logs
 logs/
