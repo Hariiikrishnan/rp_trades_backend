@@ -1,117 +1,135 @@
+'use strict';
+
+require('dotenv').config();
 const express = require('express');
+const helmet = require('helmet');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
+const fs = require('fs');
+
 const config = require('./src/config/config');
+const logger = require('./src/utils/logger');
+const requestLogger = require('./src/middleware/requestLogger');
+const { apiLimiter } = require('./src/middleware/rateLimiter');
+const { errorHandler, notFoundHandler } = require('./src/middleware/errorHandler');
 
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// ─── Ensure upload directories exist ───────────────────────────────────────
+Object.values(config.uploadDirs).forEach((dir) => {
+  fs.mkdirSync(dir, { recursive: true });
+});
+// Ensure logs dir exists (for production file logging)
+fs.mkdirSync('logs', { recursive: true });
+
+// ─── Security headers ───────────────────────────────────────────────────────
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow static file serving
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+  })
+);
+
+// ─── CORS ───────────────────────────────────────────────────────────────────
+const allowedOrigins = config.cors.allowedOrigins;
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      logger.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+
+// ─── Request logging ────────────────────────────────────────────────────────
+app.use(requestLogger);
+
+// ─── Compression ────────────────────────────────────────────────────────────
+app.use(compression());
+
+// ─── Body parsers (reduced from 50mb — use proper upload limits) ────────────
+app.use(express.json({ limit: config.bodyLimit }));
+app.use(express.urlencoded({ limit: config.bodyLimit, extended: true }));
+
+// ─── Static files ───────────────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
-const authRoutes = require('./src/routes/authRoutes');
-const complaintRoutes = require('./src/routes/complaintRoutes');
-const adminRoutes = require('./src/routes/adminRoutes');
-const technicianRoutes = require('./src/routes/technicianRoutes');
-const customerRoutes = require('./src/routes/customerRoutes');
-const notificationRoutes = require('./src/routes/notificationRoutes');
-const reviewRoutes = require('./src/routes/reviewRoutes');
+// ─── Global rate limiter ────────────────────────────────────────────────────
+app.use('/api/', apiLimiter);
 
-app.use('/api/auth', authRoutes);
-app.use('/api/complaints', complaintRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/technician', technicianRoutes);
-app.use('/api/customer', customerRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/reviews', reviewRoutes);
+// ─── Trust proxy (for correct IP behind load balancer / Nginx) ──────────────
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 
-app.get("/test",(req,res)=>{
-  res.json("Testing route working");
-});
+// ─── Routes ─────────────────────────────────────────────────────────────────
+app.use('/api/auth', require('./src/routes/authRoutes'));
+app.use('/api/complaints', require('./src/routes/complaintRoutes'));
+app.use('/api/admin', require('./src/routes/adminRoutes'));
+app.use('/api/technician', require('./src/routes/technicianRoutes'));
+app.use('/api/customer', require('./src/routes/customerRoutes'));
+app.use('/api/notifications', require('./src/routes/notificationRoutes'));
+app.use('/api/reviews', require('./src/routes/reviewRoutes'));
 
-// const admin = require('firebase-admin');
-// const serviceAccount = require('./serviceAccountKey.json'); 
-
-// // Initialize Firebase Admin SDK
-// admin.initializeApp({
-//   credential: admin.credential.cert(serviceAccount)
-// });
-
-
-
-/**
- * POST /api/send-notification
- * Sends a push notification to a specific device token.
- */
-// app.get('/api/send-notification', async (req, res) => {
-
-
-//   // 1. Basic validation
-//   // if (!token || !title || !body) {
-//   //   return res.status(400).json({
-//   //     success: false,
-//   //     error: 'Missing required fields: token, title, and body are required.'
-//   //   });
-//   // }
-
-//   // 2. Construct the FCM payload
-//   const message = {
-//     notification: {
-//       title: "Hello",
-//       body: "Hiii"
-//     },
-//     // Optional custom data payload (must be strings)
-//     data:  {}, 
-//     token: "f1oVDCsfSjCMo2kNl1eyYY:APA91bEX8_ZXiqWBz60YGebpR0YfA6Lu7lAY_zHxAqn1vPO4S878z4lJWbwusmIfW4arVp_Y_MABanKMNA9sRURRkenLYeRk8KlT92JYd0rr9cRH3VHBLPY"
-//   };
-
-//   try {
-//     // 3. Send the notification via Firebase
-//     const response = await admin.messaging().send(message);
-//     console.log(response);
-    
-//     return res.status(200).json({
-//       success: true,
-//       messageId: response
-//     });
-
-//   } catch (error) {
-//     console.error('FCM Error:', error);
-
-//     // 4. Handle expired or invalid client tokens
-//     if (
-//       error.code === 'messaging/registration-token-not-registered' ||
-//       error.code === 'messaging/invalid-registration-token'
-//     ) {
-//       // TODO: Add code here to delete this token from your database
-//       console.warn(`Token ${token} is no longer valid. Cleaning up database.`);
-      
-//       return res.status(410).json({
-//         success: false,
-//         error: 'The device token is invalid or expired. Please remove it.'
-//       });
-//     }
-
-//     // Handle generic internal server/FCM errors
-//     return res.status(500).json({
-//       success: false,
-//       error: 'Failed to send notification.',
-//       details: error.message
-//     });
-//   }
-// });
-
-
-
-
-// Basic health check
+// ─── Health check (exempt from rate limiting) ────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date() });
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    env: config.env,
+    uptime: process.uptime(),
+  });
 });
 
-app.listen(config.port, () => {
-  console.log(`Server running on port ${config.port}`);
+// ─── 404 + Error handlers ────────────────────────────────────────────────────
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+// ─── Graceful shutdown ───────────────────────────────────────────────────────
+const prisma = require('./src/prisma/client');
+
+const gracefulShutdown = async (signal) => {
+  logger.info(`${signal} received. Shutting down gracefully...`);
+  try {
+    await prisma.$disconnect();
+    logger.info('Database connection closed.');
+  } catch (err) {
+    logger.error('Error disconnecting Prisma:', err);
+  }
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// ─── Unhandled rejections / exceptions ───────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception:', err);
+  process.exit(1);
 });
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled Rejection:', reason);
+  process.exit(1);
+});
+
+// ─── Start server ─────────────────────────────────────────────────────────────
+const server = app.listen(config.port, () => {
+  logger.info(`Server running in ${config.env} mode on port ${config.port}`);
+});
+
+server.on('error', (err) => {
+  logger.error('Server error:', err);
+  process.exit(1);
+});
+
+module.exports = app;

@@ -4,8 +4,10 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const { generateReportPDF } = require('../services/pdfGenerator');
+const { compressBase64Image } =
+  require('../utils/imageCompressor');
 
-
+const sharp = require('sharp');
 
 exports.getTechnicianProfile = async (req, res) => {
   try {
@@ -131,14 +133,28 @@ exports.submitServiceReport = async (req, res) => {
       const custSigFilename = `customer_sig_${complaintId}_${Date.now()}.png`;
       customerSigPath = path.join(sigDir, custSigFilename);
       customerSigUrl = `/uploads/signatures/${custSigFilename}`;
-      fs.writeFileSync(customerSigPath, Buffer.from(customerSignature, 'base64'));
+      await sharp(
+  Buffer.from(customerSignature, 'base64')
+)
+.rotate() 
+.jpeg({
+  quality: 50
+})
+.toFile(customerSigPath);
     }
 
     if (engineerSignature) {
       const engSigFilename = `engineer_sig_${complaintId}_${Date.now()}.png`;
       engineerSigPath = path.join(sigDir, engSigFilename);
       engineerSigUrl = `/uploads/signatures/${engSigFilename}`;
-      fs.writeFileSync(engineerSigPath, Buffer.from(engineerSignature, 'base64'));
+      await sharp(
+  Buffer.from(engineerSignature, 'base64')
+)
+.rotate() 
+.jpeg({
+  quality: 50
+})
+.toFile(engineerSigPath);
     }
 
     let savedImages = null;
@@ -147,13 +163,29 @@ exports.submitServiceReport = async (req, res) => {
       if (!fs.existsSync(imgDir)) {
         fs.mkdirSync(imgDir, { recursive: true });
       }
-      savedImages = installationImages.map((img, index) => {
+    savedImages = await Promise.all(
+      installationImages.map(async (img, index) => {
         if (!img.base64) return null;
-        const imgFilename = `img_${complaintId}_${Date.now()}_${index}.png`;
-        const imgPath = path.join(imgDir, imgFilename);
-        fs.writeFileSync(imgPath, Buffer.from(img.base64, 'base64'));
-        return { name: img.name || `Image ${index + 1}`, url: `/uploads/images/${imgFilename}` };
-      }).filter(Boolean);
+
+        const imgFilename =
+          `img_${complaintId}_${Date.now()}_${index}.jpg`;
+
+        const imgPath =
+          path.join(imgDir, imgFilename);
+
+        await compressBase64Image(
+          img.base64,
+          imgPath
+        );
+
+        return {
+          name: img.name || `Image ${index + 1}`,
+          url: `/uploads/images/${imgFilename}`
+        };
+      })
+    );
+
+    savedImages = savedImages.filter(Boolean);
     }
 
     const report = await prisma.serviceReport.create({

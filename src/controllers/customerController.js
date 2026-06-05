@@ -4,6 +4,9 @@ const notificationService = require("../services/notificationService");
 const fs = require('fs');
 const path = require('path');
 
+const { compressBase64Image } =
+  require('../utils/imageCompressor');
+
 exports.getProfile = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -44,13 +47,29 @@ exports.raiseComplaint = async (req, res) => {
       if (!fs.existsSync(imgDir)) {
         fs.mkdirSync(imgDir, { recursive: true });
       }
-      savedImages = images.map((img, index) => {
-        if (!img.base64) return null;
-        const imgFilename = `complaint_${req.user.id}_${Date.now()}_${index}.png`;
-        const imgPath = path.join(imgDir, imgFilename);
-        fs.writeFileSync(imgPath, Buffer.from(img.base64, 'base64'));
-        return { name: img.name || `Image ${index + 1}`, url: `/uploads/complaints/${imgFilename}` };
-      }).filter(Boolean);
+savedImages = await Promise.all(
+  images.map(async (img, index) => {
+    if (!img.base64) return null;
+
+    const imgFilename =
+      `complaint_${req.user.id}_${Date.now()}_${index}.jpg`;
+
+    const imgPath =
+      path.join(imgDir, imgFilename);
+
+    await compressBase64Image(
+      img.base64,
+      imgPath
+    );
+
+    return {
+      name: img.name || `Image ${index + 1}`,
+      url: `/uploads/complaints/${imgFilename}`
+    };
+  })
+);
+
+// savedImages = savedImages.filter(Boolean);
     }
 
     const complaintNumber =
