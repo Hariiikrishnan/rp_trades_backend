@@ -6,7 +6,10 @@ let isInitialized = false;
 
 // Attempt to initialize Firebase Admin SDK
 try {
-  const serviceAccountPath = path.join(__dirname, '../../../manus_backend/serviceAccountKey.json');
+  const serviceAccountPath = path.resolve(
+  process.cwd(),
+  'serviceAccountKey.json'
+);
   if (fs.existsSync(serviceAccountPath)) {
     const serviceAccount = require(serviceAccountPath);
     admin.initializeApp({
