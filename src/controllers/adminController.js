@@ -89,13 +89,13 @@ exports.createCustomer = async (req, res) => {
       name,
       email,
       phone,
-      address,
+      addresses = [],
       acUnits = [],
     } = req.body;
      console.log(req.body);
 
     // Validation
-    if (!name || !email || !address) {
+    if (!name || !email || !addresses || addresses.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Name, email and address are required',
@@ -185,13 +185,11 @@ exports.createCustomer = async (req, res) => {
           ),
 
           addresses: {
-            create: [
-              {
-                type: 'HOME',
-                address,
-                isDefault: true,
-              },
-            ],
+            create: addresses.map(addr => ({
+              type: addr.type || 'HOME',
+              address: addr.address,
+              isDefault: addr.isDefault || false,
+            })),
           },
 
           acUnits: {
