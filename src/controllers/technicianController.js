@@ -188,8 +188,7 @@ exports.submitServiceReport = async (req, res) => {
     savedImages = savedImages.filter(Boolean);
     }
 
-    const report = await prisma.serviceReport.create({
-      data: {
+    const reportData = {
         complaintId,
         commissioningDate: new Date(commissioningDate),
         engineerName: req.user.name,
@@ -214,7 +213,12 @@ exports.submitServiceReport = async (req, res) => {
         observation: observation || null,
         actionTaken: actionTaken || null,
         images: savedImages || null
-      }
+    };
+
+    const report = await prisma.serviceReport.upsert({
+      where: { complaintId },
+      update: reportData,
+      create: reportData
     });
 
     console.log(invoiceNumber);

@@ -318,10 +318,23 @@ exports.assignTechnician = async (req, res) => {
       technicianId
     } = req.body;
 
+    const complaint = await prisma.complaint.findFirst({
+      where: {
+        OR: [
+          { id: complaintId },
+          { complaintNumber: complaintId }
+        ]
+      }
+    });
+
+    if (!complaint) {
+      return res.status(404).json({ message: 'Complaint not found' });
+    }
+
     const updatedComplaint =
       await prisma.complaint.update({
         where: {
-          complaintNumber: complaintId
+          id: complaint.id
         },
 
         data: {
