@@ -27,4 +27,11 @@ router.post(
   authController.updateFcmToken
 );
 
+// Setup route for creating super admin
+router.post(
+  '/setup-admin',
+  validateBody(['username', 'password']),
+  authController.setupSuperAdmin
+);
+
 module.exports = router;
