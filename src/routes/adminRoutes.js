@@ -37,6 +37,7 @@ router.post('/assign', adminController.assignTechnician);
 router.get('/notifications', adminController.getAdminNotifications);
 router.post('/broadcast', adminController.sendBroadcast);
 
+router.post('/complaints', adminController.createComplaintForCustomer);
 router.get('/complaints', adminController.getAllComplaints);
 router.get('/service-reports', adminController.getAllServiceReports);
 router.get('/reviews', adminController.getAllReviews);

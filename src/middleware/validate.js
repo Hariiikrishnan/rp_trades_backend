@@ -16,14 +16,6 @@ const validateBody = (fields) => (req, res, next) => {
   next();
 };
 
-const validateEmail = (req, res, next) => {
-  const { email } = req.body;
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ success: false, message: 'Invalid email format.' });
-  }
-  next();
-};
-
 const validatePasswordStrength = (req, res, next) => {
   const { password, newPassword } = req.body;
   const pwd = password || newPassword;
@@ -36,4 +28,4 @@ const validatePasswordStrength = (req, res, next) => {
   next();
 };
 
-module.exports = { validateBody, validateEmail, validatePasswordStrength };
+module.exports = { validateBody, validatePasswordStrength };

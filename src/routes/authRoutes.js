@@ -3,23 +3,14 @@ const router = express.Router();
 
 const authController = require('../controllers/authController');
 const { authenticate } = require('../middleware/auth');
-const { authLimiter, passwordLimiter } = require('../middleware/rateLimiter');
-const { validateBody, validateEmail, validatePasswordStrength } = require('../middleware/validate');
+const { authLimiter } = require('../middleware/rateLimiter');
+const { validateBody } = require('../middleware/validate');
 
 router.post(
   '/login',
   authLimiter,
-  validateBody(['email', 'password']),
-  validateEmail,
+  validateBody(['username', 'password']),
   authController.login
-);
-
-router.post(
-  '/setup-password',
-  passwordLimiter,
-  validateBody(['token', 'password']),
-  validatePasswordStrength,
-  authController.setupPassword
 );
 
 router.post(
@@ -27,15 +18,6 @@ router.post(
   authLimiter,
   validateBody(['refreshToken']),
   authController.refreshToken
-);
-
-router.post(
-  '/change-password',
-  authenticate,
-  passwordLimiter,
-  validateBody(['newPassword']),
-  validatePasswordStrength,
-  authController.changePassword
 );
 
 router.post(

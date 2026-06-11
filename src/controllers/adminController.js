@@ -11,7 +11,7 @@ exports.getAdminProfile = async (req, res) => {
       select: {
         id: true,
         name: true,
-        email: true,
+        username: true,
         phone: true,
         avatar: true,
         role: true,
@@ -25,14 +25,14 @@ exports.getAdminProfile = async (req, res) => {
 
 exports.updateAdminProfile = async (req, res) => {
   try {
-    const { name, email, phone } = req.body;
+    const { name, username, phone } = req.body;
     const updatedAdmin = await prisma.user.update({
       where: { id: req.user.id },
-      data: { name, email, phone },
+      data: { name, username, phone },
       select: {
         id: true,
         name: true,
-        email: true,
+        username: true,
         phone: true,
         avatar: true,
         role: true,
@@ -87,7 +87,8 @@ exports.createCustomer = async (req, res) => {
   try {
     const {
       name,
-      email,
+      username,
+      password,
       phone,
       addresses = [],
       acUnits = [],
@@ -95,10 +96,10 @@ exports.createCustomer = async (req, res) => {
      console.log(req.body);
 
     // Validation
-    if (!name || !email || !addresses || addresses.length === 0) {
+    if (!name || !username || !password || !addresses || addresses.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Name, email and address are required',
+        message: 'Name, username, password and address are required',
       });
     }
 
@@ -106,7 +107,7 @@ exports.createCustomer = async (req, res) => {
       await prisma.user.findFirst({
         where: {
           OR: [
-            { email },
+            { username },
             ...(phone ? [{ phone }] : []),
           ],
         },
@@ -168,21 +169,13 @@ exports.createCustomer = async (req, res) => {
       await prisma.user.create({
         data: {
           name,
-          email,
+          username,
           phone,
 
           role: 'CUSTOMER',
 
-          passwordHash:
-            bcrypt.hashSync(`${email.split('@')[0]}123`, 10),
-
-          isPasswordSet: false,
-
-          setupToken,
-
-          setupTokenExpiry: new Date(
-            Date.now() + 24 * 60 * 60 * 1000
-          ),
+          assignedPassword: password,
+          passwordHash: bcrypt.hashSync(password, 10),
 
           addresses: {
             create: addresses.map(addr => ({
@@ -210,7 +203,6 @@ exports.createCustomer = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: 'Customer created successfully',
-      setupToken,
       customer,
     });
 
@@ -234,22 +226,23 @@ exports.createTechnician = async (req, res) => {
   try {
     const {
       name,
-      email,
+      username,
+      password,
       phone,
       specialty,
       experience,
       isAvailable,
     } = req.body;
 
-    if (!name || !email || !phone) {
+    if (!name || !username || !password || !phone) {
       return res.status(400).json({
-        message: 'Name, email and phone are required',
+        message: 'Name, username, password and phone are required',
       });
     }
 
     const existingUser =
       await prisma.user.findUnique({
-        where: { email },
+        where: { username },
       });
 
     if (existingUser) {
@@ -265,7 +258,7 @@ exports.createTechnician = async (req, res) => {
       await prisma.user.create({
         data: {
           name,
-          email,
+          username,
           phone,
 
           role: 'TECHNICIAN',
@@ -279,25 +272,14 @@ exports.createTechnician = async (req, res) => {
           isAvailable:
             isAvailable ?? true,
 
-          passwordHash: bcrypt.hashSync(
-            `${email.split('@')[0]}123`,
-            10,
-          ),
-
-          isPasswordSet: false,
-
-          setupToken,
-
-          setupTokenExpiry: new Date(
-            Date.now() + 24 * 60 * 60 * 1000,
-          ),
+          assignedPassword: password,
+          passwordHash: bcrypt.hashSync(password, 10),
         },
       });
 
     res.status(201).json({
       success: true,
       message: 'Technician created successfully',
-      setupToken,
       technician,
     });
   } catch (error) {
@@ -395,11 +377,11 @@ exports.getTechnicians = async (req, res) => {
         select: {
           id: true,
           name: true,
-          email: true,
+          username: true,
           phone: true,
           status: true,
           avatar: true,
-          isPasswordSet: true,
+          assignedPassword: true,
           experience: true,
           specialty: true,
           isAvailable: true,
@@ -582,7 +564,7 @@ exports.globalSearch = async (req, res) => {
         role: 'CUSTOMER',
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
-          { email: { contains: q, mode: 'insensitive' } },
+          { username: { contains: q, mode: 'insensitive' } },
           { phone: { contains: q, mode: 'insensitive' } },
         ]
       },
@@ -594,7 +576,7 @@ exports.globalSearch = async (req, res) => {
         role: 'TECHNICIAN',
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
-          { email: { contains: q, mode: 'insensitive' } },
+          { username: { contains: q, mode: 'insensitive' } },
           { phone: { contains: q, mode: 'insensitive' } },
         ]
       },
@@ -685,7 +667,7 @@ exports.getAllServiceReports = async (req, res) => {
 exports.updateTechnician = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, specialty, experience, isAvailable } = req.body;
+    const { name, username, phone, specialty, experience, isAvailable } = req.body;
     const exp = parseInt(experience);
 
     // Convert isAvailable to boolean if it comes as string, just to be safe
@@ -696,7 +678,7 @@ exports.updateTechnician = async (req, res) => {
 
     const updated = await prisma.user.update({
       where: { id },
-      data: { name, email, phone, specialty, experience: exp, isAvailable: availableStatus }
+      data: { name, username, phone, specialty, experience: exp, isAvailable: availableStatus }
     });
     res.json(updated);
   } catch (error) {
@@ -753,11 +735,11 @@ exports.getAllReviews = async (req, res) => {
 exports.updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, addresses, acUnits } = req.body;
+    const { name, username, phone, addresses, acUnits } = req.body;
 
     const updatedUser = await prisma.user.update({
       where: { id },
-      data: { name, email, phone },
+      data: { name, username, phone },
     });
 
     if (addresses && Array.isArray(addresses)) {
@@ -822,5 +804,53 @@ exports.updateCustomer = async (req, res) => {
   } catch (error) {
     console.error('Error updating customer:', error);
     res.status(500).json({ message: 'Error updating customer', error: error.message });
+  }
+};
+
+exports.createComplaintForCustomer = async (req, res) => {
+  try {
+    const { customerId, issueType, description, acUnitIds, preferredDate, address } = req.body;
+
+    if (!customerId || !issueType || !description) {
+      return res.status(400).json({ message: 'Customer ID, issue type and description are required' });
+    }
+
+    const count = await prisma.complaint.count();
+    const complaintNumber = `#CMP-${9000 + count + 1}`;
+
+    const complaint = await prisma.complaint.create({
+      data: {
+        complaintNumber,
+        customerId,
+        issueType,
+        description,
+        address,
+        preferredDate: preferredDate ? new Date(preferredDate) : null,
+        status: 'Pending',
+        acUnits: acUnitIds?.length ? {
+          connect: acUnitIds.map(id => ({ id }))
+        } : undefined,
+        events: {
+          create: [
+            {
+              status: 'Complaint Logged',
+              description: 'Admin raised a new complaint on behalf of customer'
+            }
+          ]
+        }
+      },
+      include: {
+        acUnits: true,
+        customer: { select: { name: true, phone: true } }
+      }
+    });
+
+    res.status(201).json(complaint);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      message: 'Error creating complaint',
+      error: error.message
+    });
   }
 };

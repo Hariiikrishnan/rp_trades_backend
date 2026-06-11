@@ -32,10 +32,11 @@ enum Priority {
 model User {
   id                String    @id @default(uuid())
   name              String
-  email             String    @unique
+  username          String    @unique
   phone             String?
 
   passwordHash      String?
+  assignedPassword  String?
 
   role              Role      @default(CUSTOMER)
 
@@ -46,11 +47,6 @@ model User {
   specialty         String?
   experience        Int?      @default(0)
   isAvailable       Boolean   @default(true)
-
-  isPasswordSet     Boolean   @default(false)
-
-  setupToken        String?
-  setupTokenExpiry  DateTime?
 
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

@@ -23,10 +23,10 @@ const generateTokens = (userId) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password, role } = req.body;
+    const { username, password, role } = req.body;
 
     const user = await prisma.user.findUnique({
-      where: { email }
+      where: { username }
     });
 
     if (!user) {
@@ -34,13 +34,6 @@ exports.login = async (req, res) => {
         message: 'Invalid credentials'
       });
     }
-
-    // Remove the blocking check for isPasswordSet
-    // if (!user.isPasswordSet) {
-    //   return res.status(403).json({
-    //     message: 'Please setup your password first'
-    //   });
-    // }
 
     if (role && user.role !== role.toUpperCase()) {
       return res.status(403).json({
@@ -66,10 +59,9 @@ exports.login = async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
-        email: user.email,
+        username: user.username,
         role: user.role,
-        avatar: user.avatar,
-        isPasswordSet: user.isPasswordSet
+        avatar: user.avatar
       },
       accessToken,
       refreshToken
@@ -80,74 +72,6 @@ exports.login = async (req, res) => {
       message: 'Login failed',
       error: error.message
     });
-  }
-};
-
-exports.setupPassword = async (req, res) => {
-  try {
-    const { token, password } = req.body;
-
-    const user = await prisma.user.findFirst({
-      where: {
-        setupToken: token,
-        setupTokenExpiry: {
-          gt: new Date()
-        }
-      }
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        message: 'Invalid or expired token'
-      });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    await prisma.user.update({
-      where: {
-        id: user.id
-      },
-      data: {
-        passwordHash,
-        isPasswordSet: true,
-        status: 'active',
-        setupToken: null,
-        setupTokenExpiry: null
-      }
-    });
-
-    res.json({
-      message: 'Password setup successful'
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      message: 'Setup password failed',
-      error: error.message
-    });
-  }
-};
-
-exports.changePassword = async (req, res) => {
-  try {
-    const { newPassword } = req.body;
-    const userId = req.user.id; // requires authentication middleware
-
-    const passwordHash = await bcrypt.hash(newPassword, 10);
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        passwordHash,
-        isPasswordSet: true,
-        status: 'active'
-      }
-    });
-
-    res.json({ message: 'Password changed successfully' });
-  } catch (error) {
-    res.status(500).json({ message: 'Change password failed', error: error.message });
   }
 };
 

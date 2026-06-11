@@ -264,10 +264,10 @@ exports.getACUnits = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, email, phone } = req.body;
+    const { name, username, phone } = req.body;
     const updatedUser = await prisma.user.update({
       where: { id: req.user.id },
-      data: { name, email, phone },
+      data: { name, username, phone },
       include: { addresses: true, acUnits: true }
     });
     res.json(updatedUser);
