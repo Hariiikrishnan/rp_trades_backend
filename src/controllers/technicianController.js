@@ -16,7 +16,7 @@ exports.getTechnicianProfile = async (req, res) => {
       select: {
         id: true,
         name: true,
-        email: true,
+        username: true,
         phone: true,
         avatar: true,
         role: true,

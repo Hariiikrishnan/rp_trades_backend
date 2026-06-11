@@ -27,11 +27,10 @@ const authenticate = async (req, res, next) => {
       select: {
         id: true,
         name: true,
-        email: true,
+        username: true,
         role: true,
         status: true,
         avatar: true,
-        isPasswordSet: true,
         fcmToken: true,
       },
     });
