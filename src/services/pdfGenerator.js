@@ -23,6 +23,7 @@ const C = {
 };
 
 const BORDER_W = 1; // thicker borders/strokes everywhere
+const SECTION_GAP = 14; // vertical gap between major sections
 
 // 3-column layout widths for AC table
 const COL3_W = CW / 3;
@@ -43,12 +44,16 @@ function generateReportPDF(data, pdfPath) {
         // 3-column AC unit table (one row per AC unit)
         y = drawACUnitsTable(doc, y, data);
 
+        // Gap before Remarks / Billing
+        y += SECTION_GAP;
+
         y = drawTableSection(doc, y, 'Remarks', data.remarks?.trim() || 'N/A');
         y = drawTableSection(doc, y, 'Billing Summary', buildBillingContent(data));
 
         // Photos
         const { savedImages } = data;
         if (savedImages && savedImages.length > 0) {
+            y += SECTION_GAP;
             y = drawPhotosSection(doc, y, savedImages);
         }
 
@@ -152,13 +157,6 @@ function buildBillingContent(data) {
 }
 
 // ─── 3-Column AC Units Table ─────────────────────────────────────────────────
-/**
- * Draws a 3-column table:
- *  Col 1: AC Unit Details
- *  Col 2: Observations (Service) / Operation Test (Installation)
- *  Col 3: Actions Taken (Service) / Quality Checklist (Installation)
- * One row per AC unit. Header row repeats on each page break.
- */
 function drawACUnitsTable(doc, y, data) {
     const isService = data.jobType === 'Service';
     const PAD = 8;
@@ -180,32 +178,29 @@ function drawACUnitsTable(doc, y, data) {
             ? buildActionsTakenContent(ac.actionTaken)
             : buildQualityCheckContent(ac.qualityCheck);
 
-        // Measure heights
-        doc.fontSize(10).font('Helvetica');
-        const h1 = measureLinesHeight(doc, col1, COL3_W - PAD * 2);
-        const h2 = measureLinesHeight(doc, col2, COL3_W - PAD * 2);
-        const h3 = measureLinesHeight(doc, col3, COL3_W - PAD * 2);
-        let rowH = Math.max(h1, h2, h3, 30) + PAD * 2;
+        const innerW = COL3_W - PAD * 2;
 
-        // Page break: redraw header on new page
+        const h1 = measureLinesHeight(doc, col1, innerW);
+        const h2 = measureLinesHeight(doc, col2, innerW);
+        const h3 = measureLinesHeight(doc, col3, innerW);
+        let rowH = Math.max(h1, h2, h3) + PAD * 2;
+        rowH = Math.max(rowH, 30);
+
         if (y + rowH > PAGE_H - M - 80) {
             doc.addPage();
             y = M;
             y = drawTableHeaderRow(doc, y, headers);
         }
 
-        // Border box for the row
         doc.rect(M, y, CW, rowH).strokeColor(C.border).lineWidth(BORDER_W).stroke();
-        // Column dividers
         doc.moveTo(M + COL3_W, y).lineTo(M + COL3_W, y + rowH)
             .strokeColor(C.border).lineWidth(BORDER_W).stroke();
         doc.moveTo(M + COL3_W * 2, y).lineTo(M + COL3_W * 2, y + rowH)
             .strokeColor(C.border).lineWidth(BORDER_W).stroke();
 
-        // Cell content
-        drawCellLines(doc, col1, M + PAD, y + PAD, COL3_W - PAD * 2);
-        drawCellLines(doc, col2, M + COL3_W + PAD, y + PAD, COL3_W - PAD * 2);
-        drawCellLines(doc, col3, M + COL3_W * 2 + PAD, y + PAD, COL3_W - PAD * 2);
+        drawCellLines(doc, col1, M + PAD, y + PAD, innerW);
+        drawCellLines(doc, col2, M + COL3_W + PAD, y + PAD, innerW);
+        drawCellLines(doc, col3, M + COL3_W * 2 + PAD, y + PAD, innerW);
 
         y += rowH;
     });
@@ -236,22 +231,34 @@ function drawTableHeaderRow(doc, y, headers) {
     return y + rowH;
 }
 
+/**
+ * Measure total rendered height of multi-line content at fontSize 10 / Helvetica,
+ * matching the font state used in drawCellLines. Resets font state before measuring
+ * to avoid stale-state issues from prior doc.text()/heightOfString() calls.
+ */
 function measureLinesHeight(doc, content, width) {
+    doc.font('Helvetica').fontSize(10);
     const lines = String(content).split('\n');
     let total = 0;
     lines.forEach(line => {
-        total += doc.heightOfString(line, { width }) + 2;
+        total += doc.heightOfString(line, { width, lineGap: 2 });
     });
     return total;
 }
 
+/**
+ * Render multi-line content. Y is advanced explicitly using heightOfString
+ * (with the same width/options as the text call) rather than relying on doc.y,
+ * which can be left in an inconsistent state by prior calls.
+ */
 function drawCellLines(doc, content, x, y, width) {
     const lines = String(content).split('\n');
     let lineY = y;
     lines.forEach((line) => {
         doc.fontSize(10).font('Helvetica').fillColor(C.text);
+        const h = doc.heightOfString(line, { width, lineGap: 2 });
         doc.text(line, x, lineY, { width, lineGap: 2 });
-        lineY = doc.y + 2;
+        lineY += h;
     });
 }
 
@@ -267,18 +274,11 @@ function drawTableSection(doc, y, label, content) {
     if (isBilling) {
         valueHeight = 3 * 14 + PAD * 2;
     } else {
-        const lines = String(content).split('\n');
-        doc.fontSize(10).font('Helvetica');
-        let totalLineH = 0;
-        lines.forEach(line => {
-            const h = doc.heightOfString(line, { width: VALUE_COL_W - PAD * 2 });
-            totalLineH += h + 2;
-        });
-        valueHeight = totalLineH + PAD * 2;
+        valueHeight = measureLinesHeight(doc, content, VALUE_COL_W - PAD * 2) + PAD * 2;
     }
 
-    const labelHeight = doc.fontSize(10).font('Helvetica-Bold')
-        .heightOfString(label, { width: LABEL_COL_W - PAD * 2 }) + PAD * 2;
+    doc.font('Helvetica-Bold').fontSize(10);
+    const labelHeight = doc.heightOfString(label, { width: LABEL_COL_W - PAD * 2 }) + PAD * 2;
 
     const rowH = Math.max(valueHeight, labelHeight, 36);
 
@@ -301,9 +301,9 @@ function drawTableSection(doc, y, label, content) {
         const { subtotal, tax, total } = content;
         doc.fontSize(10).font('Helvetica').fillColor(C.text);
         doc.text(`Subtotal: Rs. ${fmtAmount(subtotal)}`, vx, y + PAD, { width: vw });
-        doc.text(`GST (18%): Rs. ${fmtAmount(tax)}`, vx, doc.y + 2, { width: vw });
+        doc.text(`GST (18%): Rs. ${fmtAmount(tax)}`, vx, y + PAD + 14, { width: vw });
         doc.fontSize(10).font('Helvetica-Bold').fillColor(C.text);
-        doc.text(`Total: Rs. ${fmtAmount(total)}`, vx, doc.y + 2, { width: vw });
+        doc.text(`Total: Rs. ${fmtAmount(total)}`, vx, y + PAD + 28, { width: vw });
     } else {
         drawCellLines(doc, content, vx, y + PAD, vw);
     }
@@ -332,7 +332,6 @@ function drawHeader(doc, y, jobType) {
 
     y = Math.max(doc.y, y + logoSize) + 10;
 
-    // Centered heading across full page width
     const title = `${jobType === 'Service' ? 'Service Report' : 'Installation Certificate'}`;
     doc.fontSize(14).font('Helvetica-Bold').fillColor(C.primary)
         .text(title, M, y, { width: CW, align: 'center' });
@@ -458,7 +457,6 @@ function drawSignaturesAndFooter(doc, y, data) {
     const c1X = M;
     const c2X = PAGE_W - M - SIG_W;
 
-    // Box border thicker, NO vertical divider between the two boxes
     doc.rect(c1X, sigY, SIG_W, SIG_H).strokeColor(C.sigBorder).lineWidth(BORDER_W * 1.5).stroke();
     if (customerSigPath && fs.existsSync(customerSigPath)) {
         try {
