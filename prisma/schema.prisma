@@ -139,6 +139,7 @@ model ServiceReport {
   indoorSerial      String?
   outdoorModel      String?
   outdoorSerial     String?
+  acUnits           Json?
   
   // Operation Test (JSON for flexible storage of temps/voltage)
   operationTest     Json?

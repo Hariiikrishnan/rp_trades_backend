@@ -17,14 +17,15 @@ const C = {
     primary: '#1a1a2e',
     text: '#333333',
     muted: '#555555',
-    border: '#cccccc',
+    border: '#999999',
     sigBorder: '#999999',
     tableHeader: '#f5f5f5',
 };
 
-// ─── Row heights for table sections ──────────────────────────────────────────
-const LABEL_COL_W = 130;
-const VALUE_COL_W = CW - LABEL_COL_W;
+const BORDER_W = 1; // thicker borders/strokes everywhere
+
+// 3-column layout widths for AC table
+const COL3_W = CW / 3;
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 function generateReportPDF(data, pdfPath) {
@@ -39,16 +40,8 @@ function generateReportPDF(data, pdfPath) {
         y = hLine(doc, y + 4);
         y += 4;
 
-        // Table sections differ by job type
-        y = drawTableSection(doc, y, 'AC Unit Details', buildACUnitContent(data));
-
-        if (data.jobType === 'Service') {
-            y = drawTableSection(doc, y, 'Observations', buildObservationsContent(data));
-            y = drawTableSection(doc, y, 'Actions Taken', buildActionsTakenContent(data));
-        } else {
-            y = drawTableSection(doc, y, 'Operation Test', buildOperationTestContent(data));
-            y = drawTableSection(doc, y, 'Quality Checklist', buildQualityCheckContent(data));
-        }
+        // 3-column AC unit table (one row per AC unit)
+        y = drawACUnitsTable(doc, y, data);
 
         y = drawTableSection(doc, y, 'Remarks', data.remarks?.trim() || 'N/A');
         y = drawTableSection(doc, y, 'Billing Summary', buildBillingContent(data));
@@ -68,56 +61,83 @@ function generateReportPDF(data, pdfPath) {
     });
 }
 
-// ─── Content Builders ─────────────────────────────────────────────────────────
+// ─── AC Units helpers (support both single-unit legacy data and acUnits[]) ──
 
-function buildACUnitContent(data) {
-    const { indoorModel, indoorSerial, outdoorModel, outdoorSerial } = data;
-    return [
-        `Indoor Model: ${indoorModel || 'N/A'}`,
-        `Serial: ${indoorSerial || 'N/A'}`,
-        outdoorModel ? `Outdoor Model: ${outdoorModel}` : null,
-        outdoorSerial ? `Outdoor Serial: ${outdoorSerial}` : null,
-    ].filter(Boolean).join('\n');
+function getACUnits(data) {
+    if (Array.isArray(data.acUnits) && data.acUnits.length > 0) {
+        return data.acUnits;
+    }
+    // Fallback: build a single AC unit from legacy top-level fields
+    return [{
+        id: data.indoorSerial || '',
+        details: data.indoorModel || '',
+        outdoorModel: data.outdoorModel,
+        outdoorSerial: data.outdoorSerial,
+        operationTest: data.operationTest,
+        qualityCheck: data.qualityCheck,
+        observation: data.observation,
+        actionTaken: data.actionTaken,
+    }];
 }
 
-function buildOperationTestContent(data) {
-    const ot = data.operationTest || {};
+function buildACDetailsContent(data, ac) {
+    const lines = [
+        `Details: ${ac.details || 'N/A'}`,
+        `Serial No: ${ac.id || 'N/A'}`,
+    ];
+    if (ac.outdoorModel) lines.push(`Outdoor Model: ${ac.outdoorModel}`);
+    if (ac.outdoorSerial) lines.push(`Outdoor Serial: ${ac.outdoorSerial}`);
+    return lines.join('\n');
+}
+
+function buildOperationTestContent(ot) {
+    ot = ot || {};
     const v = (val) => (val !== undefined && val !== null && val !== '') ? val : 'N/A';
     return [
-        `Ambient Temp: ${v(ot.ambient_temp)}°C | Room Temp: ${v(ot.room_temp)}°C | Grill Temp: ${v(ot.grill_temp)}°C`,
-        `Suction Temp: ${v(ot.suction_temp)}°C | Discharge Temp: ${v(ot.discharge_temp)}°C`,
-        `Voltage L1-N: ${v(ot.v_l1_n)}V | L1-N2: ${v(ot.v_l1_n2)}V | L2-3: ${v(ot.v_l2_3)}V | L3-1: ${v(ot.v_l3_1)}V`,
-        `High P: ${v(ot.high_p)} | Low P: ${v(ot.low_p)} | Current: ${v(ot.current)}A`,
+        `Ambient Temp: ${v(ot.ambient_temp)}°C`,
+        `Room Temp: ${v(ot.room_temp)}°C`,
+        `Grill Temp: ${v(ot.grill_temp)}°C`,
+        `Suction Temp: ${v(ot.suction_temp)}°C`,
+        `Discharge Temp: ${v(ot.discharge_temp)}°C`,
+        `Voltage L1-N: ${v(ot.v_l1_n)}V`,
+        `Voltage L1-N2: ${v(ot.v_l1_n2)}V`,
+        `Voltage L2-3: ${v(ot.v_l2_3)}V`,
+        `Voltage L3-1: ${v(ot.v_l3_1)}V`,
+        `High P: ${v(ot.high_p)}`,
+        `Low P: ${v(ot.low_p)}`,
+        `Current: ${v(ot.current)}A`,
     ].join('\n');
 }
 
-function buildQualityCheckContent(data) {
-    const qc = data.qualityCheck || {};
+function buildQualityCheckContent(qc) {
+    qc = qc || {};
     const v = (val) => (val !== undefined && val !== null && val !== '') ? val : 'N/A';
     return [
-        `Leak Test: ${v(qc.leak_test)} | Insulation Piping: ${v(qc.insulation_pipe)}`,
-        `Insulation Flare: ${v(qc.insulation_flare)} | Drain Flow: ${v(qc.drain_flow)}`,
+        `Leak Test: ${v(qc.leak_test)}`,
+        `Insulation Piping: ${v(qc.insulation_pipe)}`,
+        `Insulation Flare: ${v(qc.insulation_flare)}`,
+        `Drain Water Flow: ${v(qc.drain_flow)}`,
         `Field Setting: ${v(qc.field_setting)}`,
     ].join('\n');
 }
 
-function buildObservationsContent(data) {
-    const obs = data.observation || {};
+function buildObservationsContent(obs) {
+    obs = obs || {};
     const parts = [];
     if (Array.isArray(obs.issues) && obs.issues.length) {
-        parts.push(obs.issues.join(', '));
+        obs.issues.forEach(issue => parts.push(issue));
     }
     if (obs.other) parts.push(obs.other);
     return parts.join('\n') || 'N/A';
 }
 
-function buildActionsTakenContent(data) {
-    const act = data.actionTaken || {};
+function buildActionsTakenContent(act) {
+    act = act || {};
     const lines = [];
     if (Array.isArray(act.actions) && act.actions.length) {
-        act.actions.forEach((a, i) => lines.push(`${i + 1}. ${a}`));
+        act.actions.forEach((a) => lines.push(a));
     }
-    if (act.other) lines.push(`${lines.length + 1}. ${act.other}`);
+    if (act.other) lines.push(act.other);
     return lines.join('\n') || 'N/A';
 }
 
@@ -131,25 +151,123 @@ function buildBillingContent(data) {
     };
 }
 
-// ─── Table Row Renderer ───────────────────────────────────────────────────────
-
+// ─── 3-Column AC Units Table ─────────────────────────────────────────────────
 /**
- * Draws a bordered two-column table row: label (left) | content (right).
- * content can be a plain string (multiline via \n) or a billing object.
- * Returns Y after the row.
+ * Draws a 3-column table:
+ *  Col 1: AC Unit Details
+ *  Col 2: Observations (Service) / Operation Test (Installation)
+ *  Col 3: Actions Taken (Service) / Quality Checklist (Installation)
+ * One row per AC unit. Header row repeats on each page break.
  */
+function drawACUnitsTable(doc, y, data) {
+    const isService = data.jobType === 'Service';
+    const PAD = 8;
+
+    const headers = isService
+        ? ['AC Unit Details', 'Observations', 'Actions Taken']
+        : ['AC Unit Details', 'Operation Test', 'Quality Checklist'];
+
+    const acUnits = getACUnits(data);
+
+    y = drawTableHeaderRow(doc, y, headers);
+
+    acUnits.forEach((ac) => {
+        const col1 = buildACDetailsContent(data, ac);
+        const col2 = isService
+            ? buildObservationsContent(ac.observation)
+            : buildOperationTestContent(ac.operationTest);
+        const col3 = isService
+            ? buildActionsTakenContent(ac.actionTaken)
+            : buildQualityCheckContent(ac.qualityCheck);
+
+        // Measure heights
+        doc.fontSize(10).font('Helvetica');
+        const h1 = measureLinesHeight(doc, col1, COL3_W - PAD * 2);
+        const h2 = measureLinesHeight(doc, col2, COL3_W - PAD * 2);
+        const h3 = measureLinesHeight(doc, col3, COL3_W - PAD * 2);
+        let rowH = Math.max(h1, h2, h3, 30) + PAD * 2;
+
+        // Page break: redraw header on new page
+        if (y + rowH > PAGE_H - M - 80) {
+            doc.addPage();
+            y = M;
+            y = drawTableHeaderRow(doc, y, headers);
+        }
+
+        // Border box for the row
+        doc.rect(M, y, CW, rowH).strokeColor(C.border).lineWidth(BORDER_W).stroke();
+        // Column dividers
+        doc.moveTo(M + COL3_W, y).lineTo(M + COL3_W, y + rowH)
+            .strokeColor(C.border).lineWidth(BORDER_W).stroke();
+        doc.moveTo(M + COL3_W * 2, y).lineTo(M + COL3_W * 2, y + rowH)
+            .strokeColor(C.border).lineWidth(BORDER_W).stroke();
+
+        // Cell content
+        drawCellLines(doc, col1, M + PAD, y + PAD, COL3_W - PAD * 2);
+        drawCellLines(doc, col2, M + COL3_W + PAD, y + PAD, COL3_W - PAD * 2);
+        drawCellLines(doc, col3, M + COL3_W * 2 + PAD, y + PAD, COL3_W - PAD * 2);
+
+        y += rowH;
+    });
+
+    return y;
+}
+
+function drawTableHeaderRow(doc, y, headers) {
+    const PAD = 6;
+    const rowH = 24;
+
+    if (y + rowH > PAGE_H - M - 80) {
+        doc.addPage();
+        y = M;
+    }
+
+    doc.rect(M, y, CW, rowH).fillAndStroke(C.tableHeader, C.border);
+    doc.lineWidth(BORDER_W).strokeColor(C.border);
+    doc.moveTo(M + COL3_W, y).lineTo(M + COL3_W, y + rowH).stroke();
+    doc.moveTo(M + COL3_W * 2, y).lineTo(M + COL3_W * 2, y + rowH).stroke();
+    doc.rect(M, y, CW, rowH).strokeColor(C.border).lineWidth(BORDER_W).stroke();
+
+    doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primary);
+    headers.forEach((h, i) => {
+        doc.text(h, M + COL3_W * i + PAD, y + 7, { width: COL3_W - PAD * 2, align: 'center' });
+    });
+
+    return y + rowH;
+}
+
+function measureLinesHeight(doc, content, width) {
+    const lines = String(content).split('\n');
+    let total = 0;
+    lines.forEach(line => {
+        total += doc.heightOfString(line, { width }) + 2;
+    });
+    return total;
+}
+
+function drawCellLines(doc, content, x, y, width) {
+    const lines = String(content).split('\n');
+    let lineY = y;
+    lines.forEach((line) => {
+        doc.fontSize(10).font('Helvetica').fillColor(C.text);
+        doc.text(line, x, lineY, { width, lineGap: 2 });
+        lineY = doc.y + 2;
+    });
+}
+
+// ─── Generic Table Row Renderer (Remarks / Billing) ───────────────────────────
+
 function drawTableSection(doc, y, label, content) {
     const PAD = 8;
+    const LABEL_COL_W = 130;
+    const VALUE_COL_W = CW - LABEL_COL_W;
     const isBilling = content && typeof content === 'object' && content.type === 'billing';
 
-    // ── Measure required height ───────────────────────────────────────────────
     let valueHeight;
     if (isBilling) {
-        // 3 lines: subtotal, gst, total (bold)
         valueHeight = 3 * 14 + PAD * 2;
     } else {
         const lines = String(content).split('\n');
-        // Estimate each line's rendered height (PDFKit wraps at VALUE_COL_W)
         doc.fontSize(10).font('Helvetica');
         let totalLineH = 0;
         lines.forEach(line => {
@@ -164,27 +282,18 @@ function drawTableSection(doc, y, label, content) {
 
     const rowH = Math.max(valueHeight, labelHeight, 36);
 
-    // Page break if needed
     if (y + rowH > PAGE_H - M - 80) {
         doc.addPage();
         y = M;
     }
 
-    // ── Draw border box ───────────────────────────────────────────────────────
-    doc.rect(M, y, CW, rowH).strokeColor(C.border).lineWidth(0.5).stroke();
-
-    // Vertical divider between label and value
+    doc.rect(M, y, CW, rowH).strokeColor(C.border).lineWidth(BORDER_W).stroke();
     doc.moveTo(M + LABEL_COL_W, y).lineTo(M + LABEL_COL_W, y + rowH)
-        .strokeColor(C.border).lineWidth(0.5).stroke();
+        .strokeColor(C.border).lineWidth(BORDER_W).stroke();
 
-    // ── Label cell (bold, primary colour) ────────────────────────────────────
     doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primary)
-        .text(label, M + PAD, y + PAD, {
-            width: LABEL_COL_W - PAD * 2,
-            lineGap: 2,
-        });
+        .text(label, M + PAD, y + PAD, { width: LABEL_COL_W - PAD * 2, lineGap: 2 });
 
-    // ── Value cell ────────────────────────────────────────────────────────────
     const vx = M + LABEL_COL_W + PAD;
     const vw = VALUE_COL_W - PAD * 2;
 
@@ -196,13 +305,7 @@ function drawTableSection(doc, y, label, content) {
         doc.fontSize(10).font('Helvetica-Bold').fillColor(C.text);
         doc.text(`Total: Rs. ${fmtAmount(total)}`, vx, doc.y + 2, { width: vw });
     } else {
-        const lines = String(content).split('\n');
-        let lineY = y + PAD;
-        lines.forEach((line, idx) => {
-            doc.fontSize(10).font('Helvetica').fillColor(C.text);
-            doc.text(line, vx, lineY, { width: vw, lineGap: 2 });
-            lineY = doc.y + 2;
-        });
+        drawCellLines(doc, content, vx, y + PAD, vw);
     }
 
     return y + rowH;
@@ -229,8 +332,10 @@ function drawHeader(doc, y, jobType) {
 
     y = Math.max(doc.y, y + logoSize) + 10;
 
+    // Centered heading across full page width
+    const title = `${jobType === 'Service' ? 'Service Report' : 'Installation Certificate'}`;
     doc.fontSize(14).font('Helvetica-Bold').fillColor(C.primary)
-        .text(`${jobType === 'Service' ? 'Service' : 'Installation'} Certificate`, M, y);
+        .text(title, M, y, { width: CW, align: 'center' });
 
     return doc.y + 6;
 }
@@ -308,7 +413,7 @@ function drawPhotosSection(doc, y, savedImages) {
             rowX = startX;
         }
 
-        doc.rect(rowX, rowY, PHOTO_SZ, PHOTO_SZ).strokeColor(C.border).lineWidth(0.5).stroke();
+        doc.rect(rowX, rowY, PHOTO_SZ, PHOTO_SZ).strokeColor(C.border).lineWidth(BORDER_W).stroke();
         try {
             doc.image(imgPath, rowX + 2, rowY + 2, {
                 fit: [PHOTO_SZ - 4, PHOTO_SZ - 4],
@@ -353,7 +458,8 @@ function drawSignaturesAndFooter(doc, y, data) {
     const c1X = M;
     const c2X = PAGE_W - M - SIG_W;
 
-    doc.rect(c1X, sigY, SIG_W, SIG_H).strokeColor(C.sigBorder).lineWidth(0.5).stroke();
+    // Box border thicker, NO vertical divider between the two boxes
+    doc.rect(c1X, sigY, SIG_W, SIG_H).strokeColor(C.sigBorder).lineWidth(BORDER_W * 1.5).stroke();
     if (customerSigPath && fs.existsSync(customerSigPath)) {
         try {
             doc.image(customerSigPath, c1X + 6, sigY + 6, {
@@ -366,7 +472,7 @@ function drawSignaturesAndFooter(doc, y, data) {
     doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primary)
         .text('Customer Signature', c1X, sigY + SIG_H + 5, { width: SIG_W, align: 'center' });
 
-    doc.rect(c2X, sigY, SIG_W, SIG_H).strokeColor(C.sigBorder).lineWidth(0.5).stroke();
+    doc.rect(c2X, sigY, SIG_W, SIG_H).strokeColor(C.sigBorder).lineWidth(BORDER_W * 1.5).stroke();
     if (engineerSigPath && fs.existsSync(engineerSigPath)) {
         try {
             doc.image(engineerSigPath, c2X + 6, sigY + 6, {
@@ -381,7 +487,7 @@ function drawSignaturesAndFooter(doc, y, data) {
 
     const footerY = PAGE_H - M - 18;
     doc.moveTo(M, footerY - 8).lineTo(PAGE_W - M, footerY - 8)
-        .strokeColor(C.border).lineWidth(0.5).stroke();
+        .strokeColor(C.border).lineWidth(BORDER_W).stroke();
     doc.fontSize(10).font('Helvetica-Bold').fillColor(C.primary)
         .text('Thank you for choosing RP TRADERS.', M, footerY, { width: CW, align: 'center' });
 }
@@ -389,7 +495,7 @@ function drawSignaturesAndFooter(doc, y, data) {
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 function hLine(doc, y) {
-    doc.moveTo(M, y).lineTo(PAGE_W - M, y).strokeColor(C.border).lineWidth(0.5).stroke();
+    doc.moveTo(M, y).lineTo(PAGE_W - M, y).strokeColor(C.border).lineWidth(BORDER_W).stroke();
     return y + 7;
 }
 

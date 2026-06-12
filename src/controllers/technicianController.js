@@ -102,8 +102,8 @@ exports.submitServiceReport = async (req, res) => {
       qualityCheck,
       customerEducation,
       billing,
-      customerSignature,   // base64 PNG string
-      engineerSignature,   // base64 PNG string
+      customerSignature,
+      engineerSignature,
       remarks,
       customerName,
       mobileNumber,
@@ -113,7 +113,8 @@ exports.submitServiceReport = async (req, res) => {
       jobType,
       observation,
       actionTaken,
-      installationImages
+      installationImages,
+      acUnits          // <-- NEW: array of per-AC-unit data
     } = req.body;
 
 
@@ -134,13 +135,13 @@ exports.submitServiceReport = async (req, res) => {
       customerSigPath = path.join(sigDir, custSigFilename);
       customerSigUrl = `/uploads/signatures/${custSigFilename}`;
       await sharp(
-  Buffer.from(customerSignature, 'base64')
-)
-.rotate() 
-.jpeg({
-  quality: 50
-})
-.toFile(customerSigPath);
+        Buffer.from(customerSignature, 'base64')
+      )
+        .rotate()
+        .jpeg({
+          quality: 50
+        })
+        .toFile(customerSigPath);
     }
 
     if (engineerSignature) {
@@ -148,13 +149,13 @@ exports.submitServiceReport = async (req, res) => {
       engineerSigPath = path.join(sigDir, engSigFilename);
       engineerSigUrl = `/uploads/signatures/${engSigFilename}`;
       await sharp(
-  Buffer.from(engineerSignature, 'base64')
-)
-.rotate() 
-.jpeg({
-  quality: 50
-})
-.toFile(engineerSigPath);
+        Buffer.from(engineerSignature, 'base64')
+      )
+        .rotate()
+        .jpeg({
+          quality: 50
+        })
+        .toFile(engineerSigPath);
     }
 
     let savedImages = null;
@@ -163,57 +164,59 @@ exports.submitServiceReport = async (req, res) => {
       if (!fs.existsSync(imgDir)) {
         fs.mkdirSync(imgDir, { recursive: true });
       }
-    savedImages = await Promise.all(
-      installationImages.map(async (img, index) => {
-        if (!img.base64) return null;
+      savedImages = await Promise.all(
+        installationImages.map(async (img, index) => {
+          if (!img.base64) return null;
 
-        const imgFilename =
-          `img_${complaintId}_${Date.now()}_${index}.jpg`;
+          const imgFilename =
+            `img_${complaintId}_${Date.now()}_${index}.jpg`;
 
-        const imgPath =
-          path.join(imgDir, imgFilename);
+          const imgPath =
+            path.join(imgDir, imgFilename);
 
-        await compressBase64Image(
-          img.base64,
-          imgPath
-        );
+          await compressBase64Image(
+            img.base64,
+            imgPath
+          );
 
-        return {
-          name: img.name || `Image ${index + 1}`,
-          url: `/uploads/images/${imgFilename}`
-        };
-      })
-    );
+          return {
+            name: img.name || `Image ${index + 1}`,
+            url: `/uploads/images/${imgFilename}`
+          };
+        })
+      );
 
-    savedImages = savedImages.filter(Boolean);
+      savedImages = savedImages.filter(Boolean);
     }
 
     const reportData = {
-        complaintId,
-        commissioningDate: new Date(commissioningDate),
-        engineerName: req.user.name,
-        indoorModel,
-        indoorSerial,
-        outdoorModel,
-        outdoorSerial,
-        operationTest,
-        qualityCheck,
-        customerEducation,
-        installationCharge: billing.subtotal,
-        gst: billing.tax,
-        totalAmount: billing.total,
-        customerSignature: customerSigUrl,
-        engineerSignature: engineerSigUrl,
-        customerName: customerName || null,
-        mobileNumber: mobileNumber || null,
-        remarks: remarks || null,
-        invoiceNumber: invoiceNumber || null,
-        dop: dop ? new Date(dop) : null,
-        jobType: jobType || 'Installation',
-        observation: observation || null,
-        actionTaken: actionTaken || null,
-        images: savedImages || null
+      complaintId,
+      commissioningDate: new Date(commissioningDate),
+      engineerName: req.user.name,
+      indoorModel,
+      indoorSerial,
+      outdoorModel,
+      outdoorSerial,
+      operationTest,
+      qualityCheck,
+      customerEducation,
+      installationCharge: billing.subtotal,
+      gst: billing.tax,
+      totalAmount: billing.total,
+      customerSignature: customerSigUrl,
+      engineerSignature: engineerSigUrl,
+      customerName: customerName || null,
+      mobileNumber: mobileNumber || null,
+      remarks: remarks || null,
+      invoiceNumber: invoiceNumber || null,
+      dop: dop ? new Date(dop) : null,
+      jobType: jobType || 'Installation',
+      observation: observation || null,
+      actionTaken: actionTaken || null,
+      images: savedImages || null,
+      acUnits: acUnits || null   // <-- NEW (requires Json column in Prisma schema)
     };
+
 
     const report = await prisma.serviceReport.upsert({
       where: { complaintId },
@@ -256,10 +259,11 @@ exports.submitServiceReport = async (req, res) => {
         qualityCheck,
         observation,
         actionTaken,
+        acUnits,              // <-- NEW: pass through, generateReportPDF.js will use this
         billing,
         remarks: remarks || '',
-        customerSigPath,          // absolute path (already written above)
-        engineerSigPath,          // absolute path (already written above)
+        customerSigPath,
+        engineerSigPath,
         savedImages: savedImages || [],
       },
       pdfPath
