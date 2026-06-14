@@ -272,7 +272,8 @@ function drawTableSection(doc, y, label, content) {
 
     let valueHeight;
     if (isBilling) {
-        valueHeight = 3 * 14 + PAD * 2;
+        const numLines = (content.tax > 0) ? 3 : 2;
+        valueHeight = numLines * 14 + PAD * 2;
     } else {
         valueHeight = measureLinesHeight(doc, content, VALUE_COL_W - PAD * 2) + PAD * 2;
     }
@@ -301,9 +302,13 @@ function drawTableSection(doc, y, label, content) {
         const { subtotal, tax, total } = content;
         doc.fontSize(10).font('Helvetica').fillColor(C.text);
         doc.text(`Subtotal: Rs. ${fmtAmount(subtotal)}`, vx, y + PAD, { width: vw });
-        doc.text(`GST (18%): Rs. ${fmtAmount(tax)}`, vx, y + PAD + 14, { width: vw });
+        let nextY = y + PAD + 14;
+        if (tax > 0) {
+            doc.text(`GST (18%): Rs. ${fmtAmount(tax)}`, vx, nextY, { width: vw });
+            nextY += 14;
+        }
         doc.fontSize(10).font('Helvetica-Bold').fillColor(C.text);
-        doc.text(`Total: Rs. ${fmtAmount(total)}`, vx, y + PAD + 28, { width: vw });
+        doc.text(`Total: Rs. ${fmtAmount(total)}`, vx, nextY, { width: vw });
     } else {
         drawCellLines(doc, content, vx, y + PAD, vw);
     }
@@ -353,15 +358,17 @@ function drawCustomerAndInvoice(doc, y, d) {
     y = doc.y + 3;
     doc.fontSize(10).font('Helvetica').fillColor(C.text);
 
+    const capitalize = (s) => (s && typeof s === 'string') ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+
     const leftLines = [
-        `Customer Name: ${customerName || 'N/A'}`,
+        `Customer Name: ${capitalize(customerName) || 'N/A'}`,
         `Mobile: ${mobileNumber || 'N/A'}`,
         `Address: ${address || 'N/A'}`,
     ];
     const rightLines = [
         `Invoice No: ${invoiceNumber || 'N/A'}`,
         `DOP: ${fmtDate(dop)}`,
-        `Engineer Name: ${engineerName || 'N/A'}`,
+        `Engineer Name: ${capitalize(engineerName) || 'N/A'}`,
         `Commissioning Date: ${fmtDate(commissioningDate)}`,
     ];
 

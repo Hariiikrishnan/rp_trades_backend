@@ -55,6 +55,7 @@ exports.getAssignedJobs = async (req, res) => {
       },
       include: {
         customer: { select: { name: true, phone: true, avatar: true, acUnits: true } },
+        technician: { select: { name: true } },
         acUnits: true,
         serviceReport: { select: { pdfPath: true } }
       }
