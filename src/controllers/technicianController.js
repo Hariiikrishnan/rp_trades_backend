@@ -34,7 +34,7 @@ exports.getTechnicianProfile = async (req, res) => {
 
     const avgRating = technician.techReviews.length > 0
       ? technician.techReviews.reduce((sum, r) => sum + r.rating, 0) / technician.techReviews.length
-      : 4.8; // Default rating if no reviews
+      : 0.0; // Default rating if no reviews
 
     const { techReviews, ...rest } = technician;
     res.json({
