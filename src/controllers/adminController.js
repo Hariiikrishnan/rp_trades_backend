@@ -394,7 +394,7 @@ exports.getTechnicians = async (req, res) => {
     const techsWithRating = technicians.map(tech => {
       const avgRating = tech.techReviews.length > 0
         ? tech.techReviews.reduce((sum, r) => sum + r.rating, 0) / tech.techReviews.length
-        : 4.8;
+        : 0.0;
 
       const { techReviews, ...rest } = tech;
       return {
@@ -606,7 +606,7 @@ exports.globalSearch = async (req, res) => {
       ...technicians.map(t => {
         const rating = t.techReviews.length > 0
           ? t.techReviews.reduce((sum, r) => sum + r.rating, 0) / t.techReviews.length
-          : 4.8;
+          : 0.0;
         return {
           type: 'technician',
           title: t.name,
