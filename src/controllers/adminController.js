@@ -498,7 +498,7 @@ exports.getAnalytics = async (req, res) => {
     res.json({
       avgTicket: revenueStats._avg.totalAmount || 0,
       totalRevenue: revenueStats._sum.totalAmount || 0,
-      growth: 12.4, // placeholder until enough historical data
+      growth: null, // placeholder until enough historical data
       rating: avgRating,
       efficiency: efficiency,
       distribution: distribution.map(d => ({ title: d.issueType, value: d._count.id })),
@@ -611,7 +611,7 @@ exports.globalSearch = async (req, res) => {
           type: 'technician',
           title: t.name,
           subtitle: `Technician • Specialty: ${t.specialty || 'General'} • Rating: ${rating.toFixed(1)}`,
-          extra: { id: t.id, name: t.name, specialty: t.specialty, rating: Number(rating.toFixed(1)), isAvailable: t.isAvailable }
+          extra: { id: t.id, name: t.name, specialty: t.specialty, rating: Number(rating.toFixed(1)), isAvailable: t.isAvailable, password: t.assignedPassword, phone: t.phone, username: t.username, experience: t.experience }
         };
       }),
       ...complaints.map(c => ({
@@ -667,7 +667,7 @@ exports.getAllServiceReports = async (req, res) => {
 exports.updateTechnician = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, username, phone, specialty, experience, isAvailable } = req.body;
+    const { name, username, phone, specialty, experience, isAvailable, password } = req.body;
     const exp = parseInt(experience);
 
     // Convert isAvailable to boolean if it comes as string, just to be safe
@@ -676,9 +676,16 @@ exports.updateTechnician = async (req, res) => {
       availableStatus = isAvailable === 'true';
     }
 
+    const updateData = { name, username, phone, specialty, experience: exp, isAvailable: availableStatus };
+    
+    if (password && password.trim().length > 0) {
+      updateData.assignedPassword = password;
+      updateData.passwordHash = require('bcrypt').hashSync(password, 10);
+    }
+
     const updated = await prisma.user.update({
       where: { id },
-      data: { name, username, phone, specialty, experience: exp, isAvailable: availableStatus }
+      data: updateData
     });
     res.json(updated);
   } catch (error) {
@@ -735,11 +742,17 @@ exports.getAllReviews = async (req, res) => {
 exports.updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, username, phone, addresses, acUnits } = req.body;
+    const { name, username, phone, addresses, acUnits, password } = req.body;
+
+    const updateData = { name, username, phone };
+    if (password && password.trim().length > 0) {
+      updateData.assignedPassword = password;
+      updateData.passwordHash = require('bcrypt').hashSync(password, 10);
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id },
-      data: { name, username, phone },
+      data: updateData,
     });
 
     if (addresses && Array.isArray(addresses)) {
