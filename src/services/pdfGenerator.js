@@ -48,7 +48,9 @@ function generateReportPDF(data, pdfPath) {
         y += SECTION_GAP;
 
         y = drawTableSection(doc, y, 'Remarks', data.remarks?.trim() || 'N/A');
-        y = drawTableSection(doc, y, 'Billing Summary', buildBillingContent(data));
+        if (data.showBillingSummary !== false) {
+            y = drawTableSection(doc, y, 'Billing Summary', buildBillingContent(data));
+        }
 
         // Photos
         const { savedImages } = data;
