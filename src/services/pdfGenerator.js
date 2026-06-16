@@ -380,6 +380,21 @@ function drawHeader(doc, y, jobType) {
     return doc.y + 6;
 }
 
+function fmtDate(val) {
+    if (!val) return 'N/A';
+    try {
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return 'N/A';
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const day = d.getDate();
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        return `${day} ${month} ${year}`;
+    } catch (e) {
+        return 'N/A';
+    }
+}
+
 // ─── Customer & Invoice ───────────────────────────────────────────────────────
 
 function drawCustomerAndInvoice(doc, y, d) {
