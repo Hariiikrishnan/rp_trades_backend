@@ -49,7 +49,11 @@ function generateReportPDF(data, pdfPath) {
 
         y = drawTableSection(doc, y, 'Remarks', data.remarks?.trim() || 'N/A');
         if (data.showBillingSummary !== false) {
-            y = drawTableSection(doc, y, 'Billing Summary', buildBillingContent(data));
+            if (data.jobType === 'Installation') {
+                y = drawInstallationBillingTable(doc, y, data);
+            } else {
+                y = drawTableSection(doc, y, 'Billing Summary', buildBillingContent(data));
+            }
         }
 
         // Photos
@@ -155,6 +159,7 @@ function buildBillingContent(data) {
         subtotal: billing.subtotal,
         tax: billing.tax,
         total: billing.total,
+        items: billing.items || [],
     };
 }
 
@@ -274,8 +279,10 @@ function drawTableSection(doc, y, label, content) {
 
     let valueHeight;
     if (isBilling) {
-        const numLines = (content.tax > 0) ? 3 : 2;
-        valueHeight = numLines * 14 + PAD * 2;
+        const hasItems = Array.isArray(content.items) && content.items.length > 0;
+        const numLines = (hasItems ? content.items.length + 1 : 0) + (content.tax > 0 ? 3 : 2);
+        const extraGaps = hasItems ? 18 : 0;
+        valueHeight = numLines * 14 + extraGaps + PAD * 2;
     } else {
         valueHeight = measureLinesHeight(doc, content, VALUE_COL_W - PAD * 2) + PAD * 2;
     }
@@ -301,10 +308,37 @@ function drawTableSection(doc, y, label, content) {
     const vw = VALUE_COL_W - PAD * 2;
 
     if (isBilling) {
-        const { subtotal, tax, total } = content;
+        const { subtotal, tax, total, items } = content;
+        let nextY = y + PAD;
+
+        if (Array.isArray(items) && items.length > 0) {
+            // Draw items table header
+            doc.fontSize(9).font('Helvetica-Bold').fillColor(C.muted);
+            doc.text('Item Description', vx, nextY, { width: vw - 150 });
+            doc.text('Qty', vx + vw - 150, nextY, { width: 40, align: 'center' });
+            doc.text('Rate', vx + vw - 110, nextY, { width: 50, align: 'right' });
+            doc.text('Amount', vx + vw - 50, nextY, { width: 50, align: 'right' });
+            nextY += 14;
+
+            // Draw each item row
+            doc.fontSize(9).font('Helvetica').fillColor(C.text);
+            items.forEach((item) => {
+                doc.text(item.desc || 'N/A', vx, nextY, { width: vw - 150 });
+                doc.text(String(item.qty || 0), vx + vw - 150, nextY, { width: 40, align: 'center' });
+                doc.text(fmtAmount(item.rate || 0), vx + vw - 110, nextY, { width: 50, align: 'right' });
+                doc.text(fmtAmount(item.amount || 0), vx + vw - 50, nextY, { width: 50, align: 'right' });
+                nextY += 14;
+            });
+
+            // Draw divider line
+            doc.moveTo(vx, nextY - 2).lineTo(vx + vw, nextY - 2)
+               .strokeColor(C.border).lineWidth(0.5).stroke();
+            nextY += 4;
+        }
+
         doc.fontSize(10).font('Helvetica').fillColor(C.text);
-        doc.text(`Subtotal: Rs. ${fmtAmount(subtotal)}`, vx, y + PAD, { width: vw });
-        let nextY = y + PAD + 14;
+        doc.text(`Subtotal: Rs. ${fmtAmount(subtotal)}`, vx, nextY, { width: vw });
+        nextY += 14;
         if (tax > 0) {
             doc.text(`GST (18%): Rs. ${fmtAmount(tax)}`, vx, nextY, { width: vw });
             nextY += 14;
@@ -510,9 +544,190 @@ function fmtAmount(val) {
     return (val != null && !isNaN(val)) ? Number(val).toFixed(2) : '0.00';
 }
 
-function fmtDate(val) {
-    if (!val) return 'N/A';
-    try { return new Date(val).toLocaleDateString('en-IN'); } catch (_) { return String(val); }
+function drawInstallationBillingTable(doc, y, data) {
+    const PAD = 4;
+    const rowH = 20;
+    const colWidths = [25, 160, 25, 25, 30, 50, 60, 50, 75, 15.28];
+    const colX = [];
+    let currentX = M;
+    for (let w of colWidths) {
+        colX.push(currentX);
+        currentX += w;
+    }
+
+    const billing = data.billing || {};
+    const items = billing.items || [];
+    const applyGST = billing.tax > 0;
+    const totalRowsCount = applyGST ? 3 : 1;
+
+    const rows = [
+        { desc: 'Installation', enabled: false, qty: '-', rate: '-', amount: '-' },
+        { desc: 'Extra Wire', enabled: false, qty: '-', rate: '-', amount: '-' },
+        { desc: 'Extra Pipe', enabled: false, qty: '-', rate: '-', amount: '-' },
+        { desc: 'Angle Charge', enabled: false, qty: '-', rate: '-', amount: '-' },
+        { desc: 'Vinayal Tape', enabled: false, qty: '-', rate: '-', amount: '-' }
+    ];
+
+    const customRows = [];
+
+    function getPredefinedIndex(desc) {
+        const d = desc.toLowerCase().trim();
+        if (d.includes('installation')) return 0;
+        if (d.includes('extra wire') || (d.includes('extra') && d.includes('wire'))) return 1;
+        if (d.includes('extra pipe') || (d.includes('extra') && d.includes('pipe'))) return 2;
+        if (d.includes('angle charge') || d === 'angle') return 3;
+        if (d.includes('vinayal tape') || d.includes('vinyl tape') || d === 'vinayal' || d === 'vinyl') return 4;
+        return -1;
+    }
+
+    items.forEach(item => {
+        const desc = item.desc || '';
+        const idx = getPredefinedIndex(desc);
+        if (idx !== -1) {
+            rows[idx].enabled = true;
+            rows[idx].qty = item.qty;
+            rows[idx].rate = item.rate;
+            rows[idx].amount = item.amount;
+        } else {
+            customRows.push({
+                desc: desc,
+                enabled: true,
+                qty: item.qty,
+                rate: item.rate,
+                amount: item.amount
+            });
+        }
+    });
+
+    const allRows = [...rows, ...customRows];
+    if (customRows.length === 0) {
+        allRows.push({ desc: '', enabled: null, qty: '', rate: '', amount: '' });
+    }
+
+    // Check height for entire table or at least header + first row
+    if (y + rowH * 2 > PAGE_H - M - 80) {
+        doc.addPage();
+        y = M;
+    }
+
+    // Draw header row
+    doc.rect(M, y, CW, rowH).fillAndStroke(C.tableHeader, C.border);
+    doc.lineWidth(BORDER_W).strokeColor(C.border);
+    for (let i = 1; i < colWidths.length; i++) {
+        doc.moveTo(colX[i], y).lineTo(colX[i], y + rowH).stroke();
+    }
+
+    doc.fontSize(8).font('Helvetica-Bold').fillColor(C.primary);
+    const headers = ['Sl.No.', 'DESCRIPTION', 'Yes', 'No', 'Qty.', 'Rate', 'Amount', 'Tax', 'TOTAL Rs.', 'P.'];
+    headers.forEach((h, i) => {
+        doc.text(h, colX[i] + PAD, y + 6, { width: colWidths[i] - PAD * 2, align: (i === 1) ? 'left' : 'center' });
+    });
+    
+    y += rowH;
+
+    // Draw body rows
+    allRows.forEach((row, index) => {
+        if (y + rowH > PAGE_H - M - 80) {
+            doc.addPage();
+            y = M;
+            // Redraw header
+            doc.rect(M, y, CW, rowH).fillAndStroke(C.tableHeader, C.border);
+            doc.lineWidth(BORDER_W).strokeColor(C.border);
+            for (let i = 1; i < colWidths.length; i++) {
+                doc.moveTo(colX[i], y).lineTo(colX[i], y + rowH).stroke();
+            }
+            doc.fontSize(8).font('Helvetica-Bold').fillColor(C.primary);
+            headers.forEach((h, i) => {
+                doc.text(h, colX[i] + PAD, y + 6, { width: colWidths[i] - PAD * 2, align: (i === 1) ? 'left' : 'center' });
+            });
+            y += rowH;
+        }
+
+        // Draw row border & dividers
+        doc.rect(M, y, CW, rowH).strokeColor(C.border).lineWidth(BORDER_W).stroke();
+        for (let i = 1; i < colWidths.length; i++) {
+            doc.moveTo(colX[i], y).lineTo(colX[i], y + rowH).stroke();
+        }
+
+        // Write row content
+        doc.fontSize(9).font('Helvetica').fillColor(C.text);
+        
+        // Sl.No.
+        if (row.desc !== '') {
+            doc.text(String(index + 1), colX[0] + PAD, y + 5, { width: colWidths[0] - PAD * 2, align: 'center' });
+        }
+
+        // Description
+        doc.text(row.desc, colX[1] + PAD, y + 5, { width: colWidths[1] - PAD * 2 });
+
+        // Yes / No (via vector lines for tick/cross)
+        if (row.enabled === true) {
+            const cx = colX[2] + (colWidths[2] - 10) / 2;
+            const cy = y + (rowH - 8) / 2;
+            doc.moveTo(cx, cy + 4).lineTo(cx + 3, cy + 7).lineTo(cx + 8, cy + 1).strokeColor(C.primary).lineWidth(1.5).stroke();
+        } else if (row.enabled === false) {
+            const cx = colX[3] + (colWidths[3] - 8) / 2;
+            const cy = y + (rowH - 8) / 2;
+            doc.moveTo(cx, cy).lineTo(cx + 8, cy + 8).strokeColor(C.primary).lineWidth(1.5).stroke();
+            doc.moveTo(cx + 8, cy).lineTo(cx, cy + 8).strokeColor(C.primary).lineWidth(1.5).stroke();
+        }
+
+        // Qty, Rate, Amount
+        const qStr = (row.qty === '-' || row.qty === '') ? '-' : (typeof row.qty === 'number' ? row.qty.toString() : String(row.qty));
+        const rStr = (row.rate === '-' || row.rate === '') ? '-' : fmtAmount(row.rate);
+        const aStr = (row.amount === '-' || row.amount === '') ? '-' : fmtAmount(row.amount);
+
+        doc.text(qStr, colX[4] + PAD, y + 5, { width: colWidths[4] - PAD * 2, align: 'center' });
+        doc.text(rStr, colX[5] + PAD, y + 5, { width: colWidths[5] - PAD * 2, align: 'right' });
+        doc.text(aStr, colX[6] + PAD, y + 5, { width: colWidths[6] - PAD * 2, align: 'right' });
+
+        // Tax, Total, P are left blank on the rows
+        y += rowH;
+    });
+
+    // Totals rows
+    if (y + (rowH * totalRowsCount) > PAGE_H - M - 80) {
+        doc.addPage();
+        y = M;
+    }
+
+    const subtotal = billing.subtotal || 0;
+    const tax = billing.tax || 0;
+    const total = billing.total || 0;
+
+    if (applyGST) {
+        // Subtotal row
+        doc.rect(colX[7], y, colWidths[7] + colWidths[8] + colWidths[9], rowH).strokeColor(C.border).lineWidth(BORDER_W).stroke();
+        doc.moveTo(colX[8], y).lineTo(colX[8], y + rowH).stroke();
+        doc.moveTo(colX[9], y).lineTo(colX[9], y + rowH).stroke();
+        doc.fontSize(8).font('Helvetica-Bold').fillColor(C.primary);
+        doc.text('Subtotal', colX[7] + PAD, y + 6, { width: colWidths[7] - PAD * 2, align: 'center' });
+        doc.font('Helvetica').fillColor(C.text);
+        doc.text(fmtAmount(subtotal), colX[8] + PAD, y + 6, { width: colWidths[8] - PAD * 2, align: 'right' });
+        y += rowH;
+
+        // GST row
+        doc.rect(colX[7], y, colWidths[7] + colWidths[8] + colWidths[9], rowH).strokeColor(C.border).lineWidth(BORDER_W).stroke();
+        doc.moveTo(colX[8], y).lineTo(colX[8], y + rowH).stroke();
+        doc.moveTo(colX[9], y).lineTo(colX[9], y + rowH).stroke();
+        doc.fontSize(8).font('Helvetica-Bold').fillColor(C.primary);
+        doc.text('GST (18%)', colX[7] + PAD, y + 6, { width: colWidths[7] - PAD * 2, align: 'center' });
+        doc.font('Helvetica').fillColor(C.text);
+        doc.text(fmtAmount(tax), colX[8] + PAD, y + 6, { width: colWidths[8] - PAD * 2, align: 'right' });
+        y += rowH;
+    }
+
+    // Grand Total row
+    doc.rect(colX[7], y, colWidths[7] + colWidths[8] + colWidths[9], rowH).strokeColor(C.border).lineWidth(BORDER_W).stroke();
+    doc.moveTo(colX[8], y).lineTo(colX[8], y + rowH).stroke();
+    doc.moveTo(colX[9], y).lineTo(colX[9], y + rowH).stroke();
+    doc.fontSize(8).font('Helvetica-Bold').fillColor(C.primary);
+    doc.text('Grand Total', colX[7] + PAD, y + 6, { width: colWidths[7] - PAD * 2, align: 'center' });
+    doc.font('Helvetica-Bold').fillColor(C.text);
+    doc.text(fmtAmount(total), colX[8] + PAD, y + 6, { width: colWidths[8] - PAD * 2, align: 'right' });
+    y += rowH;
+
+    return y;
 }
 
 module.exports = { generateReportPDF };
