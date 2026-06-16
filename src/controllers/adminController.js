@@ -475,13 +475,18 @@ exports.getAnalytics = async (req, res) => {
       select: { totalAmount: true, commissioningDate: true }
     });
 
-    const revenueTrends = recentReports.map((report, index) => ({
-      x: index,
-      y: report.totalAmount || 0
-    }));
+    const revenueTrends = recentReports.map((report, index) => {
+      const date = report.commissioningDate ? new Date(report.commissioningDate) : null;
+      const label = date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : `R${index + 1}`;
+      return {
+        x: index,
+        y: report.totalAmount || 0,
+        label: label
+      };
+    });
 
     if (revenueTrends.length === 0) {
-      revenueTrends.push({ x: 0, y: 0 });
+      revenueTrends.push({ x: 0, y: 0, label: 'No Data' });
     }
 
     // Dynamic rating from reviews
