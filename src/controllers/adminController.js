@@ -685,7 +685,7 @@ exports.updateTechnician = async (req, res) => {
     
     if (password && password.trim().length > 0) {
       updateData.assignedPassword = password;
-      updateData.passwordHash = require('bcrypt').hashSync(password, 10);
+      updateData.passwordHash = bcrypt.hashSync(password, 10);
     }
 
     const updated = await prisma.user.update({
@@ -752,7 +752,7 @@ exports.updateCustomer = async (req, res) => {
     const updateData = { name, username, phone };
     if (password && password.trim().length > 0) {
       updateData.assignedPassword = password;
-      updateData.passwordHash = require('bcrypt').hashSync(password, 10);
+      updateData.passwordHash = bcrypt.hashSync(password, 10);
     }
 
     const updatedUser = await prisma.user.update({
