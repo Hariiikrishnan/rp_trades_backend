@@ -500,6 +500,70 @@ exports.getAnalytics = async (req, res) => {
     const completedComplaints = await prisma.complaint.count({ where: { status: 'Completed' } });
     const efficiency = totalComplaints > 0 ? Math.round((completedComplaints / totalComplaints) * 100) : 0;
 
+    // 1. priorityDistribution: Grouping complaints by priority (High, Medium, Low)
+    const priorityGroups = await prisma.complaint.groupBy({
+      by: ['priority'],
+      _count: { id: true }
+    });
+    const priorityDistribution = priorityGroups.map(p => ({
+      priority: p.priority,
+      count: p._count.id
+    }));
+
+    // 2. ratingsDistribution: Grouping reviews by rating (1 to 5)
+    const ratingGroups = await prisma.review.groupBy({
+      by: ['rating'],
+      _count: { id: true }
+    });
+    const ratingsDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    ratingGroups.forEach(g => {
+      ratingsDistribution[g.rating] = g._count.id;
+    });
+
+    // 3. techLeaderboard: ranking technicians by completed jobs
+    const technicians = await prisma.user.findMany({
+      where: { role: 'TECHNICIAN' },
+      select: {
+        id: true,
+        name: true,
+        specialty: true,
+        experience: true,
+        isAvailable: true,
+        techReviews: { select: { rating: true } }
+      }
+    });
+
+    const completedJobsCounts = await prisma.complaint.groupBy({
+      by: ['technicianId'],
+      where: { status: 'Completed', NOT: { technicianId: null } },
+      _count: { id: true }
+    });
+
+    const completedJobsMap = {};
+    completedJobsCounts.forEach(c => {
+      if (c.technicianId) {
+        completedJobsMap[c.technicianId] = c._count.id;
+      }
+    });
+
+    const techLeaderboard = technicians.map(tech => {
+      const avgRating = tech.techReviews.length > 0
+        ? tech.techReviews.reduce((sum, r) => sum + r.rating, 0) / tech.techReviews.length
+        : 0.0;
+      return {
+        id: tech.id,
+        name: tech.name,
+        specialty: tech.specialty,
+        experience: tech.experience || 0,
+        isAvailable: tech.isAvailable,
+        completedJobs: completedJobsMap[tech.id] || 0,
+        rating: Number(avgRating.toFixed(1))
+      };
+    });
+
+    // Sort leaderboard by completedJobs desc, then rating desc
+    techLeaderboard.sort((a, b) => b.completedJobs - a.completedJobs || b.rating - a.rating);
+
     res.json({
       avgTicket: revenueStats._avg.totalAmount || 0,
       totalRevenue: revenueStats._sum.totalAmount || 0,
@@ -507,7 +571,10 @@ exports.getAnalytics = async (req, res) => {
       rating: avgRating,
       efficiency: efficiency,
       distribution: distribution.map(d => ({ title: d.issueType, value: d._count.id })),
-      revenueTrends: revenueTrends
+      revenueTrends: revenueTrends,
+      priorityDistribution: priorityDistribution,
+      ratingsDistribution: ratingsDistribution,
+      techLeaderboard: techLeaderboard.slice(0, 5) // Top 5
     });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching analytics', error: error.message });

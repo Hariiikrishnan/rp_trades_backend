@@ -366,3 +366,20 @@ exports.getEarnings = async (req, res) => {
     res.status(500).json({ message: 'Error fetching earnings', error: error.message });
   }
 };
+
+exports.updateAvailability = async (req, res) => {
+  try {
+    const { isAvailable } = req.body;
+    const updatedTech = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { isAvailable: !!isAvailable },
+      select: {
+        id: true,
+        isAvailable: true
+      }
+    });
+    res.json(updatedTech);
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating availability', error: error.message });
+  }
+};

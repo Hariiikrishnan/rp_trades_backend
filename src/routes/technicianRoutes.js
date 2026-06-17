@@ -10,5 +10,6 @@ router.patch('/jobs/status', technicianController.updateJobStatus);
 router.post('/reports', technicianController.submitServiceReport);
 router.get('/earnings', technicianController.getEarnings);
 router.get('/profile', technicianController.getTechnicianProfile);
+router.patch('/availability', technicianController.updateAvailability);
 
 module.exports = router;
