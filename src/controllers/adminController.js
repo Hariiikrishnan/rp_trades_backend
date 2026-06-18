@@ -565,7 +565,7 @@ exports.getAnalytics = async (req, res) => {
     techLeaderboard.sort((a, b) => b.completedJobs - a.completedJobs || b.rating - a.rating);
 
     res.json({
-      avgTicket: revenueStats._avg.totalAmount || 0,
+      avgComplaint: revenueStats._avg.totalAmount || 0,
       totalRevenue: revenueStats._sum.totalAmount || 0,
       growth: null, // placeholder until enough historical data
       rating: avgRating,
