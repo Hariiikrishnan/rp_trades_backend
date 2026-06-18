@@ -500,15 +500,53 @@ exports.getAnalytics = async (req, res) => {
     const completedComplaints = await prisma.complaint.count({ where: { status: 'Completed' } });
     const efficiency = totalComplaints > 0 ? Math.round((completedComplaints / totalComplaints) * 100) : 0;
 
-    // 1. priorityDistribution: Grouping complaints by priority (High, Medium, Low)
-    const priorityGroups = await prisma.complaint.groupBy({
-      by: ['priority'],
-      _count: { id: true }
+    // 1. SLA Performance: Calculating dynamic SLA adherence for all complaints (based on 48h resolution target or preferredDate)
+    const complaintsList = await prisma.complaint.findMany({
+      select: {
+        id: true,
+        status: true,
+        date: true,
+        preferredDate: true,
+        updatedAt: true
+      }
     });
-    const priorityDistribution = priorityGroups.map(p => ({
-      priority: p.priority,
-      count: p._count.id
-    }));
+
+    let onTimeCount = 0;
+    let delayedCount = 0;
+    let activeWithinSla = 0;
+    let activeOverdue = 0;
+
+    const SLA_HOURS = 48;
+    const now = new Date();
+
+    complaintsList.forEach(c => {
+      const createdTime = new Date(c.date);
+      const limitDate = c.preferredDate 
+        ? new Date(c.preferredDate) 
+        : new Date(createdTime.getTime() + SLA_HOURS * 60 * 60 * 1000);
+
+      if (c.status === 'Completed') {
+        const resolvedTime = new Date(c.updatedAt);
+        if (resolvedTime <= limitDate) {
+          onTimeCount++;
+        } else {
+          delayedCount++;
+        }
+      } else {
+        if (now <= limitDate) {
+          activeWithinSla++;
+        } else {
+          activeOverdue++;
+        }
+      }
+    });
+
+    const slaAnalysis = [
+      { status: 'On-Time Resolved', count: onTimeCount, color: 'success' },
+      { status: 'Active (Within SLA)', count: activeWithinSla, color: 'info' },
+      { status: 'Active (Overdue)', count: activeOverdue, color: 'error' },
+      { status: 'SLA Breached (Resolved)', count: delayedCount, color: 'warning' }
+    ];
 
     // 2. ratingsDistribution: Grouping reviews by rating (1 to 5)
     const ratingGroups = await prisma.review.groupBy({
@@ -572,7 +610,7 @@ exports.getAnalytics = async (req, res) => {
       efficiency: efficiency,
       distribution: distribution.map(d => ({ title: d.issueType, value: d._count.id })),
       revenueTrends: revenueTrends,
-      priorityDistribution: priorityDistribution,
+      slaAnalysis: slaAnalysis,
       ratingsDistribution: ratingsDistribution,
       techLeaderboard: techLeaderboard.slice(0, 5) // Top 5
     });
