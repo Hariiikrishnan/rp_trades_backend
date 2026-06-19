@@ -737,7 +737,7 @@ function drawInstallationBillingTable(doc, y, data) {
     doc.moveTo(colX[8], y).lineTo(colX[8], y + rowH).stroke();
     doc.moveTo(colX[9], y).lineTo(colX[9], y + rowH).stroke();
     doc.fontSize(8).font('Helvetica-Bold').fillColor(C.primary);
-    doc.text('Grand Total', colX[7] + PAD, y + 6, { width: colWidths[7] - PAD * 2, align: 'center' });
+    doc.text('Total', colX[7] + PAD, y + 6, { width: colWidths[7] - PAD * 2, align: 'center' });
     doc.font('Helvetica-Bold').fillColor(C.text);
     doc.text(fmtAmount(total), colX[8] + PAD, y + 6, { width: colWidths[8] - PAD * 2, align: 'right' });
     y += rowH;
