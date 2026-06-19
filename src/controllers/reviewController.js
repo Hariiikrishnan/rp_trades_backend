@@ -9,7 +9,17 @@ exports.getTechnicianReviews = async (req, res) => {
       },
       orderBy: { date: 'desc' }
     });
-    res.json(reviews);
+    const formattedReviews = reviews.map(r => ({
+      id: r.id,
+      complaintId: r.complaintId,
+      customerId: r.customerId,
+      technicianId: r.technicianId,
+      rating: r.rating,
+      reviewText: r.reviewText,
+      date: r.date,
+      customerName: r.customer?.name ?? 'Customer'
+    }));
+    res.json(formattedReviews);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching reviews' });
   }
