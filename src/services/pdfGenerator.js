@@ -48,7 +48,8 @@ function generateReportPDF(data, pdfPath) {
         y += SECTION_GAP;
 
         y = drawTableSection(doc, y, 'Remarks', data.remarks?.trim() || 'N/A');
-        if (data.showBillingSummary !== false) {
+        const showBilling = data.showBillingSummary === true || data.showBillingSummary === 'true';
+        if (showBilling) {
             if (data.jobType === 'Installation') {
                 y = drawInstallationBillingTable(doc, y, data);
             } else {
@@ -332,7 +333,7 @@ function drawTableSection(doc, y, label, content) {
 
             // Draw divider line
             doc.moveTo(vx, nextY - 2).lineTo(vx + vw, nextY - 2)
-               .strokeColor(C.border).lineWidth(0.5).stroke();
+                .strokeColor(C.border).lineWidth(0.5).stroke();
             nextY += 4;
         }
 
@@ -562,7 +563,7 @@ function fmtAmount(val) {
 function drawInstallationBillingTable(doc, y, data) {
     const PAD = 4;
     const rowH = 20;
-    const colWidths = [25, 160, 25, 25, 30, 50, 60, 50, 75, 15.28];
+    const colWidths = [30, 155, 25, 25, 30, 50, 60, 50, 75, 15.28];
     const colX = [];
     let currentX = M;
     for (let w of colWidths) {
@@ -637,7 +638,7 @@ function drawInstallationBillingTable(doc, y, data) {
     headers.forEach((h, i) => {
         doc.text(h, colX[i] + PAD, y + 6, { width: colWidths[i] - PAD * 2, align: (i === 1) ? 'left' : 'center' });
     });
-    
+
     y += rowH;
 
     // Draw body rows
@@ -666,7 +667,7 @@ function drawInstallationBillingTable(doc, y, data) {
 
         // Write row content
         doc.fontSize(9).font('Helvetica').fillColor(C.text);
-        
+
         // Sl.No.
         if (row.desc !== '') {
             doc.text(String(index + 1), colX[0] + PAD, y + 5, { width: colWidths[0] - PAD * 2, align: 'center' });
