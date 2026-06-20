@@ -563,7 +563,7 @@ function fmtAmount(val) {
 function drawInstallationBillingTable(doc, y, data) {
     const PAD = 4;
     const rowH = 20;
-    const colWidths = [30, 155, 25, 25, 30, 50, 60, 50, 75, 15.28];
+    const colWidths = [40, 145, 25, 25, 30, 50, 60, 50, 75, 15.28];
     const colX = [];
     let currentX = M;
     for (let w of colWidths) {
