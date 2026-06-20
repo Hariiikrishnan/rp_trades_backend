@@ -115,7 +115,8 @@ exports.submitServiceReport = async (req, res) => {
       observation,
       actionTaken,
       installationImages,
-      acUnits          // <-- NEW: array of per-AC-unit data
+      acUnits,          // <-- NEW: array of per-AC-unit data
+      showBillingSummary
     } = req.body;
 
 
@@ -266,6 +267,7 @@ exports.submitServiceReport = async (req, res) => {
         customerSigPath,
         engineerSigPath,
         savedImages: savedImages || [],
+        showBillingSummary,
       },
       pdfPath
     );
